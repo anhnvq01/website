@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom tweaks */
+body { background: #f7f7f7; }
+.header { background: linear-gradient(90deg, #086f3a, #1da36f); }
+.btn { @apply px-4 py-2 rounded; }

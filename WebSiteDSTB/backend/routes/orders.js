@@ -1,0 +1,35 @@
+const express = require('express');
+const router = express.Router();
+const db = require('../db');
+const { v4: uuidv4 } = require('uuid');
+
+router.post('/', (req, res) => {
+  const { customer, items, subtotal, shipping, discount, total, method } = req.body;
+  if (!customer || !items) return res.status(400).json({ error: 'Missing' });
+  const id = 'TB' + Date.now();
+  db.prepare(`INSERT INTO orders (id, createdAt, customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    id, new Date().toISOString(), customer.name, customer.phone, customer.address, JSON.stringify(items), subtotal, shipping, discount, total, method, 0
+  );
+  res.json({ id, invoiceUrl: `/invoice/${id}` });
+});
+
+router.get('/', (req, res) => {
+  const rows = db.prepare('SELECT id, createdAt, customer_name, customer_phone, subtotal, shipping, discount, total, method, paid FROM orders ORDER BY createdAt DESC').all();
+  res.json(rows);
+});
+
+router.get('/:id', (req, res) => {
+  const row = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  row.items = JSON.parse(row.items_json);
+  delete row.items_json;
+  res.json(row);
+});
+
+router.post('/:id/mark-paid', (req, res) => {
+  db.prepare('UPDATE orders SET paid = 1 WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+module.exports = router;
