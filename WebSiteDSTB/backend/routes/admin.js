@@ -272,4 +272,31 @@ router.get('/stats', auth, (req, res) => {
   res.json({ period, revenue, profit, marginPercent });
 });
 
+// Category management
+router.get('/categories', auth, (req, res) => {
+  const categories = db.prepare('SELECT rowid, category FROM categories ORDER BY category').all();
+  res.json(categories);
+});
+
+router.post('/categories', auth, (req, res) => {
+  const { category } = req.body;
+  if (!category || !category.trim()) return res.status(400).json({ error: 'Category name required' });
+  db.prepare('INSERT OR IGNORE INTO categories (category) VALUES (?)').run(category.trim());
+  res.json({ ok: true, category: category.trim() });
+});
+
+router.put('/categories/:id', auth, (req, res) => {
+  const { id } = req.params;
+  const { category } = req.body;
+  if (!category || !category.trim()) return res.status(400).json({ error: 'Category name required' });
+  db.prepare('UPDATE categories SET category = ? WHERE rowid = ?').run(category.trim(), id);
+  res.json({ ok: true, category: category.trim() });
+});
+
+router.delete('/categories/:id', auth, (req, res) => {
+  const { id } = req.params;
+  db.prepare('DELETE FROM categories WHERE rowid = ?').run(id);
+  res.json({ ok: true });
+});
+
 module.exports = router;

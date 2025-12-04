@@ -36,12 +36,16 @@ export default function Admin(){
       loadProducts(savedToken)
       loadOrders(savedToken)
       loadStats(savedToken)
+      loadCategories(savedToken)
     }
   }, [])
 
   // Product management
   const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
   const [editingId, setEditingId] = useState(null)
+  const [editingCategoryId, setEditingCategoryId] = useState(null)
+  const [newCategoryName, setNewCategoryName] = useState('')
   const [productForm, setProductForm] = useState({
     name: '',
     price: 0,
@@ -142,6 +146,16 @@ export default function Admin(){
     } catch(e) { console.error(e) }
   }
 
+  async function loadCategories(tk) {
+    try {
+      const data = await Api.adminGetCategories(tk)
+      setCategories(data)
+    } catch(e) { 
+      console.error(e)
+      showToast('Lỗi tải danh mục', 'error')
+    }
+  }
+
   async function handleImageUpload(e) {
     const file = e.target.files[0]
     if (!file) return
@@ -191,6 +205,11 @@ export default function Admin(){
       } else {
         await Api.adminAddProduct(token, payload)
         showToast('Thêm sản phẩm thành công')
+        resetProductForm()
+        setEditingId(null)
+        loadProducts(token)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        return
       }
       resetProductForm()
       setEditingId(null)
@@ -245,19 +264,23 @@ export default function Admin(){
   }
 
   async function toggleOrderPaid(order) {
-    try {
-      let updated
-      if (order.paid) {
-        updated = await Api.adminMarkOrderUnpaid(token, order.id)
-      } else {
-        updated = await Api.adminMarkOrderPaid(token, order.id)
-      }
-      // Cập nhật ngay trong UI mà không cần quay lại danh sách
-      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, paid: updated.paid } : o))
-      setSelectedOrder(prev => prev && prev.id === order.id ? { ...prev, paid: updated.paid } : prev)
-      // Cập nhật số liệu
-      loadStats(token)
-    } catch(e) { showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
+    const action = order.paid ? 'Chưa TT' : 'Đã TT'
+    showConfirm(`Xác nhận cập nhật trạng thái đơn hàng thành "${action}"?`, async () => {
+      try {
+        let updated
+        if (order.paid) {
+          updated = await Api.adminMarkOrderUnpaid(token, order.id)
+        } else {
+          updated = await Api.adminMarkOrderPaid(token, order.id)
+        }
+        // Cập nhật ngay trong UI mà không cần quay lại danh sách
+        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, paid: updated.paid } : o))
+        setSelectedOrder(prev => prev && prev.id === order.id ? { ...prev, paid: updated.paid } : prev)
+        // Cập nhật số liệu
+        loadStats(token)
+        showToast(`Cập nhật trạng thái thành công: ${action}`)
+      } catch(e) { showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
+    })
   }
 
   async function deleteOrder(id) {
@@ -269,6 +292,48 @@ export default function Admin(){
         await loadOrders(token)
         window.scrollTo({ top: 0, behavior: 'smooth' })
       } catch(e) { showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
+    })
+  }
+
+  async function addCategory() {
+    if (!newCategoryName.trim()) {
+      showToast('Tên danh mục không được để trống', 'error')
+      return
+    }
+    try {
+      await Api.adminAddCategory(token, newCategoryName.trim())
+      setNewCategoryName('')
+      await loadCategories(token)
+      showToast('Thêm danh mục thành công')
+    } catch(e) {
+      showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
+    }
+  }
+
+  async function updateCategory(id, newName) {
+    if (!newName.trim()) {
+      showToast('Tên danh mục không được để trống', 'error')
+      return
+    }
+    try {
+      await Api.adminUpdateCategory(token, id, newName.trim())
+      setEditingCategoryId(null)
+      await loadCategories(token)
+      showToast('Cập nhật danh mục thành công')
+    } catch(e) {
+      showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
+    }
+  }
+
+  async function deleteCategory(id) {
+    showConfirm('Xác nhận xóa danh mục này?', async () => {
+      try {
+        await Api.adminDeleteCategory(token, id)
+        await loadCategories(token)
+        showToast('Xóa danh mục thành công')
+      } catch(e) {
+        showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
+      }
     })
   }
 
@@ -488,90 +553,151 @@ export default function Admin(){
       </div>
 
       {/* Navigation */}
-      <div className="flex gap-2 mb-6 border-b">
+      <div className="flex gap-2 mb-6 border-b overflow-x-auto">
         <button 
           onClick={() => { setStep('dashboard'); loadStats(token) }}
-          className={`px-4 py-2 font-medium border-b-2 ${step === 'dashboard' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
+          className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'dashboard' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
         >
           📊 Tổng Quan
         </button>
         
         <button 
           onClick={() => { setStep('products'); loadProducts(token) }}
-          className={`px-4 py-2 font-medium border-b-2 ${step === 'products' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
+          className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'products' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
         >
           📦 Quản Lý Sản Phẩm
         </button>
         <button 
           onClick={() => { setStep('orders'); loadOrders(token) }}
-          className={`px-4 py-2 font-medium border-b-2 ${step === 'orders' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
+          className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'orders' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
         >
           🛒 Quản Lý Đơn Hàng
+        </button>
+        <button 
+          onClick={() => { setStep('categories'); loadCategories(token) }}
+          className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'categories' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
+        >
+          🏷️ Danh Mục
         </button>
       </div>
 
       {/* Dashboard Overview */}
       {step === 'dashboard' && (
-        <div className="grid md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-blue-50 p-6 rounded shadow">
-            <h3 className="text-gray-600 font-medium">Tổng Sản Phẩm</h3>
-            <p className="text-3xl font-bold text-blue-700 mt-2">{products.length}</p>
+        <div className="space-y-6">
+          {/* Stats Cards */}
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-xl shadow-lg text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-blue-100 font-medium text-sm uppercase tracking-wide">Tổng Sản Phẩm</h3>
+                  <p className="text-4xl font-bold mt-2">{products.length}</p>
+                </div>
+                <div className="text-6xl opacity-20">📦</div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-6 rounded-xl shadow-lg text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-orange-100 font-medium text-sm uppercase tracking-wide">Tổng Đơn Hàng</h3>
+                  <p className="text-4xl font-bold mt-2">{orders.length}</p>
+                </div>
+                <div className="text-6xl opacity-20">🛒</div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-green-500 to-green-600 p-6 rounded-xl shadow-lg text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-green-100 font-medium text-sm uppercase tracking-wide">Đã Thanh Toán</h3>
+                  <p className="text-4xl font-bold mt-2">{orders.filter(o => o.paid).length}</p>
+                </div>
+                <div className="text-6xl opacity-20">✅</div>
+              </div>
+            </div>
           </div>
-          <div className="bg-orange-50 p-6 rounded shadow">
-            <h3 className="text-gray-600 font-medium">Tổng Đơn Hàng</h3>
-            <p className="text-3xl font-bold text-orange-700 mt-2">{orders.length}</p>
-          </div>
-          <div className="bg-green-50 p-6 rounded shadow">
-            <h3 className="text-gray-600 font-medium">Đơn Hàng Đã Thanh Toán</h3>
-            <p className="text-3xl font-bold text-green-700 mt-2">{orders.filter(o => o.paid).length}</p>
-          </div>
-          <div className="bg-white p-6 rounded shadow">
-            <h3 className="text-gray-600 font-medium">Doanh Thu / Lợi Nhuận</h3>
-            <div className="mt-3 text-sm text-gray-700">
-              <div className="mb-3">Biểu đồ doanh thu & lợi nhuận (₫)</div>
-              <div className="w-full">
-                {/** Simple SVG bar chart for day/week/month */}
-                {(() => {
-                  const labels = ['Hôm nay','Tuần','Tháng']
-                  const data = [stats.day?.revenue || 0, stats.week?.revenue || 0, stats.month?.revenue || 0]
-                  const profit = [stats.day?.profit || 0, stats.week?.profit || 0, stats.month?.profit || 0]
-                  const max = Math.max(...data, ...profit, 1)
-                  const chartW = 300
-                  const chartH = 100
-                  const barW = 24
-                  const gap = 18
-                  const totalW = labels.length * (barW * 2 + gap)
-                  const startX = Math.max(0, (chartW - totalW) / 2)
-                  return (
-                    <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="xMidYMid meet">
-                      {/* grid lines */}
-                      {[0.25,0.5,0.75,1].map((p,i) => (
-                        <line key={i} x1="0" x2={chartW} y1={chartH - p*chartH} y2={chartH - p*chartH} stroke="#eee" strokeWidth="1" />
-                      ))}
-                      {labels.map((lab, i) => {
-                        const rx = startX + i * (barW*2 + gap)
-                        const revH = Math.round((data[i] / max) * (chartH - 20))
-                        const profH = Math.round((profit[i] / max) * (chartH - 20))
-                        return (
+
+          {/* Revenue Chart */}
+          <div className="bg-white p-8 rounded-xl shadow-lg">
+            <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+              <span>💰</span> Doanh Thu & Lợi Nhuận
+            </h3>
+            <div className="grid lg:grid-cols-2 gap-8">
+              {/* Chart */}
+              <div>
+                <div className="mb-4 text-sm text-gray-600 font-medium">Biểu đồ so sánh (VNĐ)</div>
+                <div className="w-full bg-gray-50 rounded-lg p-6">
+                  {(() => {
+                    const labels = ['Hôm nay','Tuần','Tháng']
+                    const data = [stats.day?.revenue || 0, stats.week?.revenue || 0, stats.month?.revenue || 0]
+                    const profit = [stats.day?.profit || 0, stats.week?.profit || 0, stats.month?.profit || 0]
+                    const max = Math.max(...data, ...profit, 1)
+                    const chartW = 400
+                    const chartH = 200
+                    const barW = 40
+                    const gap = 30
+                    const totalW = labels.length * (barW * 2 + gap + 10)
+                    const startX = Math.max(20, (chartW - totalW) / 2)
+                    return (
+                      <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="xMidYMid meet" className="overflow-visible">
+                        {/* grid lines */}
+                        {[0.25,0.5,0.75,1].map((p,i) => (
                           <g key={i}>
-                            <rect x={rx} y={chartH - revH - 20} width={barW} height={revH} fill="#f59e0b" rx="3" />
-                            <rect x={rx + barW + 4} y={chartH - profH - 20} width={barW} height={profH} fill="#10b981" rx="3" />
-                            <text x={rx + barW} y={chartH - 4} fontSize="9" textAnchor="middle" fill="#444">{lab}</text>
+                            <line x1="0" x2={chartW} y1={chartH - p*chartH} y2={chartH - p*chartH} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4,4" />
                           </g>
-                        )
-                      })}
-                    </svg>
-                  )
-                })()}
-                <div className="mt-2 text-xs text-gray-600">
-                  <span className="inline-block mr-3">■ <span className="ml-1">Doanh thu</span></span>
-                  <span className="inline-block text-green-600">■ <span className="ml-1">Lợi nhuận</span></span>
+                        ))}
+                        {labels.map((lab, i) => {
+                          const rx = startX + i * (barW*2 + gap + 10)
+                          const revH = Math.max(5, Math.round((data[i] / max) * (chartH - 40)))
+                          const profH = Math.max(5, Math.round((profit[i] / max) * (chartH - 40)))
+                          return (
+                            <g key={i}>
+                              {/* Revenue bar */}
+                              <rect x={rx} y={chartH - revH - 30} width={barW} height={revH} fill="#f59e0b" rx="4">
+                                <animate attributeName="height" from="0" to={revH} dur="0.8s" fill="freeze" />
+                                <animate attributeName="y" from={chartH - 30} to={chartH - revH - 30} dur="0.8s" fill="freeze" />
+                              </rect>
+                              {/* Profit bar */}
+                              <rect x={rx + barW + 6} y={chartH - profH - 30} width={barW} height={profH} fill="#10b981" rx="4">
+                                <animate attributeName="height" from="0" to={profH} dur="0.8s" fill="freeze" />
+                                <animate attributeName="y" from={chartH - 30} to={chartH - profH - 30} dur="0.8s" fill="freeze" />
+                              </rect>
+                              {/* Label */}
+                              <text x={rx + barW + 3} y={chartH - 10} fontSize="14" fontWeight="600" textAnchor="middle" fill="#374151">{lab}</text>
+                            </g>
+                          )
+                        })}
+                      </svg>
+                    )
+                  })()}
+                </div>
+                <div className="mt-4 flex items-center justify-center gap-6 text-sm">
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-orange-500 rounded"></span>
+                    <span className="font-medium text-gray-700">Doanh thu</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-green-500 rounded"></span>
+                    <span className="font-medium text-gray-700">Lợi nhuận</span>
+                  </span>
                 </div>
               </div>
-              <div className="mt-3 text-sm text-gray-700">
-                <div>Hôm nay: <strong className="ml-2">{(stats.day?.revenue || 0).toLocaleString()}₫</strong> / <span className="text-green-600 font-semibold">{(stats.day?.profit || 0).toLocaleString()}₫</span></div>
-                <div>Tuần: <strong className="ml-2">{(stats.week?.revenue || 0).toLocaleString()}₫</strong> / <span className="text-green-600 font-semibold">{(stats.week?.profit || 0).toLocaleString()}₫</span></div>
-                <div>Tháng: <strong className="ml-2">{(stats.month?.revenue || 0).toLocaleString()}₫</strong> / <span className="text-green-600 font-semibold">{(stats.month?.profit || 0).toLocaleString()}₫</span></div>
+
+              {/* Stats Details */}
+              <div className="space-y-4">
+                <div className="bg-gradient-to-r from-orange-50 to-orange-100 p-6 rounded-lg border-l-4 border-orange-500">
+                  <div className="text-xs text-orange-600 font-semibold uppercase tracking-wider mb-2">Hôm nay</div>
+                  <div className="text-2xl font-bold text-orange-700">{(stats.day?.revenue || 0).toLocaleString()}₫</div>
+                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.day?.profit || 0).toLocaleString()}₫</div>
+                </div>
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg border-l-4 border-blue-500">
+                  <div className="text-xs text-blue-600 font-semibold uppercase tracking-wider mb-2">Tuần này</div>
+                  <div className="text-2xl font-bold text-blue-700">{(stats.week?.revenue || 0).toLocaleString()}₫</div>
+                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.week?.profit || 0).toLocaleString()}₫</div>
+                </div>
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-6 rounded-lg border-l-4 border-purple-500">
+                  <div className="text-xs text-purple-600 font-semibold uppercase tracking-wider mb-2">Tháng này</div>
+                  <div className="text-2xl font-bold text-purple-700">{(stats.month?.revenue || 0).toLocaleString()}₫</div>
+                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.month?.profit || 0).toLocaleString()}₫</div>
+                </div>
               </div>
             </div>
           </div>
@@ -674,13 +800,9 @@ export default function Admin(){
                   onChange={e=>setProductForm({...productForm, category: e.target.value})}
                   className="w-full p-2 border rounded"
                 >
-                  <option>Thịt Gác Bếp</option>
-                  <option>Thịt nướng</option>
-                  <option>Đồ Khô</option>
-                  <option>Rau Rừng – Gia Vị</option>
-                  <option>Rượu – Đồ Uống</option>
-                  <option>Gạo</option>
-                  <option>Đồ ngâm rượu</option>
+                  {categories.map(cat => (
+                    <option key={cat.rowid} value={cat.category}>{cat.category}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -1236,7 +1358,7 @@ export default function Admin(){
                 </div>
               ) : null}
 
-              <div className="flex gap-2 flex-wrap">lex-wrap">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={() => {
                     setIsEditingOrder(true)
@@ -1317,6 +1439,85 @@ export default function Admin(){
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Categories Management */}
+      {step === 'categories' && (
+        <div>
+          <div className="bg-white p-6 rounded shadow mb-6">
+            <h2 className="text-2xl font-bold mb-4">Quản Lý Danh Mục</h2>
+            <div className="flex gap-2 mb-6">
+              <input 
+                type="text" 
+                value={newCategoryName}
+                onChange={e => setNewCategoryName(e.target.value)}
+                placeholder="Nhập tên danh mục mới..."
+                className="flex-1 px-4 py-2 border rounded"
+                onKeyPress={e => e.key === 'Enter' && addCategory()}
+              />
+              <button 
+                onClick={addCategory}
+                className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium"
+              >
+                ➕ Thêm Danh Mục
+              </button>
+            </div>
+
+            {categories.length === 0 ? (
+              <div className="bg-gray-50 p-8 text-center rounded">
+                <p className="text-gray-600">Chưa có danh mục nào</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full bg-white rounded">
+                  <thead className="bg-gray-100 border-b">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Danh Mục</th>
+                      <th className="px-4 py-2 text-center">Hành Động</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categories.map(cat => (
+                      <tr key={cat.rowid} className="border-b hover:bg-gray-50">
+                        <td className="px-4 py-2">
+                          {editingCategoryId === cat.rowid ? (
+                            <input 
+                              type="text" 
+                              defaultValue={cat.category}
+                              onBlur={e => updateCategory(cat.rowid, e.target.value)}
+                              onKeyPress={e => {
+                                if (e.key === 'Enter') updateCategory(cat.rowid, e.target.value)
+                                if (e.key === 'Escape') setEditingCategoryId(null)
+                              }}
+                              autoFocus
+                              className="px-2 py-1 border rounded w-full"
+                            />
+                          ) : (
+                            cat.category
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-center space-x-2">
+                          <button 
+                            onClick={() => setEditingCategoryId(cat.rowid)}
+                            className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                          >
+                            ✏️ Sửa
+                          </button>
+                          <button 
+                            onClick={() => deleteCategory(cat.rowid)}
+                            className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+                          >
+                            🗑️ Xóa
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
