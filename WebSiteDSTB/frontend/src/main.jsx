@@ -253,7 +253,7 @@ function App(){
               </div>
 
               <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 flex-shrink-0">
-                <div className="hidden md:block w-40 lg:w-64">
+                <div className="hidden lg:block w-64">
                   <SearchBox />
                 </div>
                 {isLoggedIn && (
@@ -361,8 +361,6 @@ function App(){
                 <p className="text-sm text-gray-600 mb-3">Theo dõi chúng tôi trên mạng xã hội</p>
                 <div className="flex gap-3">
                   <a href="#" className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition-colors">f</a>
-                  <a href="#" className="w-10 h-10 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-700 transition-colors">Y</a>
-                  <a href="#" className="w-10 h-10 rounded-full bg-pink-600 text-white flex items-center justify-center hover:bg-pink-700 transition-colors">📷</a>
                 </div>
               </div>
             </div>
