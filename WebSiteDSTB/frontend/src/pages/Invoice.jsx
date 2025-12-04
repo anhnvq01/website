@@ -135,13 +135,41 @@ export default function Invoice(){
           </p>
         </div>
 
-        {/* Print Button */}
-        <div className="mt-8 text-center no-print">
+        {/* Customer Note */}
+        <div className="mt-6 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-sm text-gray-700">
+          <p className="font-medium mb-1">📝 Lưu ý quan trọng:</p>
+          <p>Nếu quý khách có bất kỳ thắc mắc hoặc cần thay đổi thông tin đơn hàng, vui lòng liên hệ qua:</p>
+          <p className="mt-2">📞 Hotline: <strong>098.994.8583</strong></p>
+          <p>💬 Zalo: <strong>098.994.8583</strong> (hoặc nhấn vào biểu tượng Zalo ở góc phải màn hình)</p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="mt-8 flex gap-3 justify-center no-print">
           <button 
             onClick={() => window.print()}
-            className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium shadow-md hover:shadow-lg transition-all"
           >
             🖨️ In Hóa Đơn
+          </button>
+          <button 
+            onClick={() => {
+              const printContent = document.querySelector('.bg-white.p-8').cloneNode(true)
+              printContent.querySelectorAll('.no-print').forEach(el => el.remove())
+              const printWindow = window.open('', '', 'width=800,height=600')
+              printWindow.document.write('<html><head><title>Hóa đơn ' + order.id + '</title>')
+              printWindow.document.write('<style>body{font-family:Arial,sans-serif;padding:20px;margin:0}table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:left}th{border-bottom:2px solid #000}td{border-bottom:1px solid #ddd}.text-center{text-align:center}.text-right{text-align:right}.font-bold{font-weight:bold}.text-orange-600{color:#ea580c}.text-red-600{color:#dc2626}.text-gray-600{color:#4b5563}.mb-6{margin-bottom:24px}.mb-4{margin-bottom:16px}.mb-3{margin-bottom:12px}.mb-2{margin-bottom:8px}.mb-1{margin-bottom:4px}.mt-2{margin-top:8px}.mt-4{margin-top:16px}.pt-3{padding-top:12px}.pt-4{padding-top:16px}.pb-4{padding-bottom:16px}.py-2{padding-top:8px;padding-bottom:8px}.py-3{padding-top:12px;padding-bottom:12px}.p-4{padding:16px}.border-b{border-bottom:1px solid #e5e7eb}.border-b-2{border-bottom:2px solid #000}.border-t{border-top:1px solid #e5e7eb}.border-t-2{border-top:2px solid #000}.border-l-4{border-left:4px solid}.border-yellow-400{border-color:#facc15}.bg-yellow-50{background-color:#fefce8}.grid{display:grid}.grid-cols-2{grid-template-columns:repeat(2,1fr)}.gap-4{gap:16px}.text-sm{font-size:14px}.text-xs{font-size:12px}.text-lg{font-size:18px}.text-xl{font-size:20px}.text-2xl{font-size:24px}</style>')
+              printWindow.document.write('</head><body>')
+              printWindow.document.write(printContent.innerHTML)
+              printWindow.document.write('</body></html>')
+              printWindow.document.close()
+              setTimeout(() => {
+                printWindow.print()
+                printWindow.close()
+              }, 250)
+            }}
+            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium shadow-md hover:shadow-lg transition-all"
+          >
+            💾 Tải Hóa Đơn
           </button>
         </div>
       </div>

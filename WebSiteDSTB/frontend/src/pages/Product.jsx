@@ -119,12 +119,18 @@ export default function Product(){
             )}
           </div>
 
-          {p.weight && (
-            <div className="mb-6 flex items-center gap-2 text-gray-700">
-              <span className="font-semibold">⚖️ Khối lượng:</span>
-              <span>{p.weight}</span>
+          <div className="mb-6 flex items-center gap-3 text-sm text-gray-700">
+            {p.weight && (
+              <div className="flex items-center gap-1">
+                <span>⚖️</span>
+                <span className="font-semibold">{p.weight}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-1">
+              <span>📊</span>
+              <span className="font-semibold">Đã bán: {p.sold_count || 0}</span>
             </div>
-          )}
+          </div>
 
           {/* Quantity selector */}
           <div className="mb-6">

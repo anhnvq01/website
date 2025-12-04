@@ -40,6 +40,7 @@ export default function Category(){
                   <h3 className="font-bold text-gray-800 line-clamp-2 mb-2 group-hover:text-green-700 transition-colors">
                     {p.name}
                   </h3>
+                  <div className="text-xs text-gray-500 mb-2">Đã bán: <span className="font-semibold text-orange-600">{p.sold_count || 0}</span></div>
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-xl font-bold text-orange-600">

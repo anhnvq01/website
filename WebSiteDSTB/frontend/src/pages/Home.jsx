@@ -2,9 +2,70 @@ import React, { useEffect, useState, useRef } from 'react'
 import Api from '../services/api'
 import { Link } from 'react-router-dom'
 
+// Helper component for product card
+function ProductCard({ product, showSoldCount = true }) {
+  // Calculate discount: price is original price, promo_price is discounted price
+  const oldPrice = product.price
+  const salePrice = product.promo_price || product.price
+  const discountPercent = product.promo_price && product.promo_price < product.price ? Math.round((product.price - product.promo_price) / product.price * 100) : 0
+  
+  return (
+    <Link to={'/product/'+product.id} className="product-card group">
+      <div className="relative overflow-hidden rounded-lg">
+        {(()=>{
+          const fallbackMap = {'gác': '/images/products/trau_gac_bep.jpg','gac': '/images/products/trau_gac_bep.jpg','măng': '/images/products/mang_kho.jpg','mang': '/images/products/mang_kho.jpg'}
+          if(!product.image){
+            const name = (product.name || '').toLowerCase()
+            for(const key of Object.keys(fallbackMap)){
+              if(name.includes(key)){return <img src={fallbackMap[key]} alt={product.name} className="product-image w-full h-56 object-cover" />}
+            }
+            return <div className="w-full h-56 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center"><span className="text-gray-400 text-4xl">📦</span></div>
+          }
+          const img = (typeof product.image === 'string') ? product.image : ''
+          const src = img.startsWith('http') || img.startsWith('/') ? img : `/images/products/${img}`
+          return <img src={src} alt={product.name} className="product-image w-full h-56 object-cover" />
+        })()}
+        {discountPercent > 0 && (
+          <div className="absolute top-3 left-3 price-badge bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-full">
+            -{discountPercent}%
+          </div>
+        )}
+      </div>
+      <div className="p-4 flex flex-col flex-1">
+        <div className="text-xs text-orange-600 font-semibold uppercase tracking-wide mb-1">{product.category}</div>
+        <h3 className="font-bold text-gray-800 line-clamp-2 mb-2 group-hover:text-green-700 transition-colors">{product.name}</h3>
+        {showSoldCount && (
+          <div className="text-xs text-gray-500 mb-1">Đã bán: <span className="font-semibold text-orange-600">{product.sold_count || 0}</span></div>
+        )}
+        <div className="mt-auto">
+          <div className="flex items-end justify-between">
+            <div>
+              <div className="text-xl font-bold text-orange-600">{salePrice.toLocaleString()}₫</div>
+              {discountPercent > 0 && (
+                <div className="text-xs text-gray-400 line-through">{oldPrice.toLocaleString()}₫</div>
+              )}
+            </div>
+            <button 
+              onClick={(e) => { e.preventDefault(); window.location.href = '/product/'+product.id }} 
+              className="icon-circle bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800"
+              aria-label="Add to cart"
+            >
+              🛒
+            </button>
+          </div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 export default function Home()
 {
   const [items, setItems] = useState([])
+  const [topSelling, setTopSelling] = useState([])
+  const [hotPromo, setHotPromo] = useState([])
+  const [tetProducts, setTetProducts] = useState([])
+  const [categoryProducts, setCategoryProducts] = useState({})
   const [slide, setSlide] = useState(0)
   const slides = [
     { title: 'Cùng Đặc Sản Tây Bắc', subtitle: 'Khám phá hương vị núi rừng', image: '/images/bg-1.jpg' },
@@ -12,13 +73,45 @@ export default function Home()
     { title: 'Ưu đãi mỗi ngày', subtitle: 'Giảm giá, combo & quà tặng', image: '/images/bg-3.jpg' }
   ]
   const timerRef = useRef(null)
-  useEffect(()=>{ Api.products().then(setItems) },[])
+  const categories = ['Thịt Gác Bếp', 'Thịt Nướng', 'Đồ Khô', 'Rau Rừng – Gia Vị', 'Rượu – Đồ Uống', 'Gạo']
+  
+  useEffect(()=>{ 
+    Api.products().then(allProducts => {
+      setItems(allProducts)
+      
+      // Top Selling - sorted by sold_count DESC, top 10
+      const sorted = [...allProducts].sort((a, b) => (b.sold_count || 0) - (a.sold_count || 0))
+      setTopSelling(sorted.slice(0, 10))
+      
+      // Hot Promo - calculate discount % (promo_price is original, price is sale price), sort DESC, top 10
+      const promoSorted = [...allProducts]
+        .filter(p => p.promo_price && p.promo_price > p.price)
+        .map(p => ({
+          ...p,
+          _discount: Math.round((p.promo_price - p.price) / p.promo_price * 100)
+        }))
+        .sort((a, b) => b._discount - a._discount)
+      setHotPromo(promoSorted.slice(0, 10))
+      
+      // Tet products (first 12)
+      setTetProducts(allProducts.slice(0, 12))
+      
+      // Group by categories
+      const grouped = {}
+      categories.forEach(cat => {
+        grouped[cat] = allProducts.filter(p => p.category === cat).slice(0, 12)
+      })
+      setCategoryProducts(grouped)
+    })
+  },[])
+  
   useEffect(()=>{
     timerRef.current = setInterval(()=>{
       setSlide(s => (s+1) % slides.length)
     }, 4000)
     return ()=> clearInterval(timerRef.current)
   }, [])
+  
   return (
     <div>
       <section className="hero w-full h-48 md:h-60 lg:h-80 mb-8">
@@ -39,7 +132,7 @@ export default function Home()
             </div>
           ))}
 
-          {/* Navigation buttons - Left & Right */}
+          {/* Navigation buttons */}
           <button 
             onClick={()=>setSlide(s=> (s-1+slides.length)%slides.length)} 
             className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 z-20 p-2 md:p-3 bg-white/80 hover:bg-white rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-110"
@@ -76,80 +169,87 @@ export default function Home()
         </div>
       </section>
 
+      {/* Top Selling Products */}
       <div className="container mx-auto p-4 mt-32 md:mt-44 lg:mt-56">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-3">
-            <span className="text-3xl">⭐</span>
-            Sản phẩm nổi bật
+            <span className="text-3xl">🔥</span>
+            Sản phẩm bán chạy nhất
           </h2>
-          <Link to="#" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1">
-            Xem tất cả
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {items.map(p => {
-            const oldPrice = Math.round(p.price * 1.18)
-            return (
-              <Link key={p.id} to={'/product/'+p.id} className="product-card group">
-                <div className="relative overflow-hidden">
-                  {
-                    (()=>{
-                      // If backend already gave an absolute URL or leading slash, use it directly.
-                      // Provide client-side fallbacks when backend doesn't supply image filenames
-                      const fallbackMap = {
-                        'gác': '/images/products/trau_gac_bep.jpg',
-                        'gac': '/images/products/trau_gac_bep.jpg',
-                        'măng': '/images/products/mang_kho.jpg',
-                        'mang': '/images/products/mang_kho.jpg'
-                      }
-                      if(!p.image){
-                        const name = (p.name || '').toLowerCase()
-                        for(const key of Object.keys(fallbackMap)){
-                          if(name.includes(key)){
-                            return <img src={fallbackMap[key]} alt={p.name} className="product-image w-full h-56 object-cover" />
-                          }
-                        }
-                        // default empty placeholder box
-                        return <div className="w-full h-56 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                          <span className="text-gray-400 text-4xl">📦</span>
-                        </div>
-                      }
-                      const img = (typeof p.image === 'string') ? p.image : ''
-                      const src = img.startsWith('http') || img.startsWith('/') ? img : `/images/products/${img}`
-                      return <img src={src} alt={p.name} className="product-image w-full h-56 object-cover" />
-                    })()
-                  }
-                  <div className="absolute top-3 left-3 price-badge bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-full">
-                    -{Math.round((oldPrice - p.price)/oldPrice*100)}%
-                  </div>
-                </div>
-                <div className="p-4 flex flex-col flex-1">
-                  <div className="text-xs text-orange-600 font-semibold uppercase tracking-wide mb-1">{p.category}</div>
-                  <h3 className="font-bold text-gray-800 line-clamp-2 mb-2 group-hover:text-green-700 transition-colors">{p.name}</h3>
-                  <div className="mt-auto">
-                    <div className="flex items-end justify-between">
-                      <div>
-                        <div className="text-xl font-bold text-orange-600">{p.price.toLocaleString()}₫</div>
-                        <div className="text-xs text-gray-400 line-through">{oldPrice.toLocaleString()}₫</div>
-                      </div>
-                      <button 
-                        onClick={(e) => { e.preventDefault(); window.location.href = '/product/'+p.id }} 
-                        className="icon-circle bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800"
-                        aria-label="Add to cart"
-                      >
-                        🛒
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            )
-          })}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+          {topSelling.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
         </div>
       </div>
+
+      {/* Hot Promotions */}
+      {hotPromo.length > 0 && (
+        <section className="py-16 bg-gradient-to-r from-red-50 to-pink-50">
+          <div className="container mx-auto px-4">
+            <div className="flex items-center justify-between mb-10">
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-3">
+                <span className="text-4xl">💥</span>
+                Khuyến Mãi HOT
+              </h2>
+              <Link to="/category/all" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
+                Xem tất cả
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+              {hotPromo.map(p => <ProductCard key={p.id} product={p} showSoldCount={false} />)}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Tet Products Section */}
+      <section className="py-16 bg-gradient-to-br from-red-50 to-orange-50">
+        <div className="container mx-auto px-4">
+          <div className="flex items-center justify-between mb-10">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-3">
+              <span className="text-4xl">🎊</span>
+              Sản Phẩm Phục Vụ Tết Nguyên Đán
+            </h2>
+            <Link to="/category/all" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
+              Xem tất cả
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {tetProducts.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
+          </div>
+        </div>
+      </section>
+
+      {/* Category Sections */}
+      {categories.map((cat, idx) => (
+        categoryProducts[cat] && categoryProducts[cat].length > 0 && (
+          <section key={cat} className={`py-16 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+            <div className="container mx-auto px-4">
+              <div className="flex items-center justify-between mb-10">
+                <h2 className="text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-3">
+                  <span className="text-4xl">{['🥓','🔥','🌰','🌿','🍷','🌾'][idx]}</span>
+                  {cat}
+                </h2>
+                <Link to={`/category/${cat}`} className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
+                  Xem tất cả
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {categoryProducts[cat].map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
+              </div>
+            </div>
+          </section>
+        )
+      ))}
 
       {/* About Section */}
       <section className="bg-gradient-to-br from-green-50 to-blue-50 py-16">
@@ -200,11 +300,11 @@ export default function Home()
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             {[
               {name: 'Thịt Gác Bếp', icon: '🥓'},
+              {name: 'Thịt nướng', icon: '🔥'},
               {name: 'Đồ Khô', icon: '🌰'},
               {name: 'Rau Rừng – Gia Vị', icon: '🌿'},
               {name: 'Rượu – Đồ Uống', icon: '🍷'},
-              {name: 'Gạo', icon: '🌾'},
-              {name: 'Combo', icon: '🎁'}
+              {name: 'Gạo', icon: '🌾'}
             ].map((cat, i)=> (
               <Link 
                 key={i} 
