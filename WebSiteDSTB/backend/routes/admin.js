@@ -205,36 +205,56 @@ router.delete('/orders/:id', auth, (req, res) => {
 // Update order
 router.patch('/orders/:id', auth, (req, res) => {
   const id = req.params.id;
-  const { customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid } = req.body;
+  const body = req.body;
 
-  db.prepare(`
-    UPDATE orders SET
-      customer_name = ?,
-      customer_phone = ?,
-      customer_address = ?,
-      items_json = ?,
-      subtotal = ?,
-      shipping = ?,
-      discount = ?,
-      total = ?,
-      method = ?,
-      paid = ?
-    WHERE id = ?
-  `).run(
-    customer_name,
-    customer_phone,
-    customer_address,
-    JSON.stringify(items_json || []),
-    subtotal,
-    shipping,
-    discount,
-    total,
-    method,
-    paid ? 1 : 0,
-    id
-  );
+  try {
+    // Build dynamic UPDATE statement
+    const fields = [];
+    const values = [];
 
-  res.json({ ok: true });
+    // Map of allowed fields to update
+    const allowedFields = {
+      customer_name: 'customer_name',
+      customer_phone: 'customer_phone', 
+      customer_address: 'customer_address',
+      items_json: 'items_json',
+      subtotal: 'subtotal',
+      shipping: 'shipping',
+      discount: 'discount',
+      total: 'total',
+      method: 'method',
+      paid: 'paid',
+      status: 'status'
+    };
+
+    for (const [key, dbField] of Object.entries(allowedFields)) {
+      if (key in body) {
+        fields.push(`${dbField} = ?`);
+        
+        if (key === 'items_json') {
+          values.push(JSON.stringify(body[key] || []));
+        } else if (key === 'paid') {
+          values.push(body[key] ? 1 : 0);
+        } else {
+          values.push(body[key]);
+        }
+      }
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    values.push(id);
+    
+    const sql = `UPDATE orders SET ${fields.join(', ')} WHERE id = ?`;
+    db.prepare(sql).run(...values);
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error updating order:', error);
+    res.status(500).json({ error: 'Failed to update order' });
+  }
 });
 
 // Stats endpoint: revenue and profit for a period (day|week|month)
@@ -254,6 +274,8 @@ router.get('/stats', auth, (req, res) => {
     start.setHours(0,0,0,0);
   } else if (period === 'month') {
     start = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (period === 'year') {
+    start = new Date(now.getFullYear(), 0, 1);
   } else {
     return res.status(400).json({ error: 'Invalid period' });
   }
@@ -269,7 +291,30 @@ router.get('/stats', auth, (req, res) => {
   const marginPercent = Number(process.env.PROFIT_MARGIN_PERCENT || 30);
   const profit = Math.round(revenue * (marginPercent / 100));
 
-  res.json({ period, revenue, profit, marginPercent });
+  // Additional metrics
+  const totalProducts = db.prepare('SELECT COUNT(*) as count FROM products').get().count || 0;
+  const totalOrders = db.prepare('SELECT COUNT(*) as count FROM orders').get().count || 0;
+  
+  // Đơn chưa giao (status = 'undelivered' hoặc không có status hoặc status khác delivered/cancelled)
+  const undeliveredOrders = db.prepare(`SELECT COUNT(*) as count FROM orders WHERE COALESCE(status, 'undelivered') = 'undelivered'`).get().count || 0;
+  
+  // Đơn đã giao nhưng chưa thanh toán (status = 'delivered' và paid = 0)
+  const unpaidDeliveredOrders = db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'delivered' AND paid = 0`).get().count || 0;
+  
+  // Đơn bom (status = 'bom')
+  const bomOrders = db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'bom'`).get().count || 0;
+
+  res.json({ 
+    period, 
+    revenue, 
+    profit, 
+    marginPercent,
+    totalProducts,
+    totalOrders,
+    undeliveredOrders,
+    unpaidDeliveredOrders,
+    bomOrders
+  });
 });
 
 // Category management

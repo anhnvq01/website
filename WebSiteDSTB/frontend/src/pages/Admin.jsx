@@ -68,6 +68,8 @@ export default function Admin(){
   const [editingOrderId, setEditingOrderId] = useState(null)
   const [isEditingOrder, setIsEditingOrder] = useState(false)
   const [editOrderItems, setEditOrderItems] = useState([])
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+  const [newStatus, setNewStatus] = useState('')
   const [stats, setStats] = useState({})
   const [orderForm, setOrderForm] = useState({
     customer_name: '',
@@ -133,6 +135,7 @@ export default function Admin(){
   async function loadOrders(tk) {
     try {
       const data = await Api.adminGetOrders(tk)
+      console.log('Orders loaded:', data)
       setOrders(data)
     } catch(e) { console.error(e) }
   }
@@ -140,9 +143,9 @@ export default function Admin(){
   async function loadStats(tk) {
     try {
       const day = await Api.adminGetStats(tk, 'day')
-      const week = await Api.adminGetStats(tk, 'week')
       const month = await Api.adminGetStats(tk, 'month')
-      setStats({ day, week, month })
+      const year = await Api.adminGetStats(tk, 'year')
+      setStats({ day, month, year })
     } catch(e) { console.error(e) }
   }
 
@@ -265,6 +268,7 @@ export default function Admin(){
 
   async function toggleOrderPaid(order) {
     const action = order.paid ? 'Chưa TT' : 'Đã TT'
+    const newPaidStatus = !order.paid
     showConfirm(`Xác nhận cập nhật trạng thái đơn hàng thành "${action}"?`, async () => {
       try {
         let updated
@@ -273,9 +277,12 @@ export default function Admin(){
         } else {
           updated = await Api.adminMarkOrderPaid(token, order.id)
         }
-        // Cập nhật ngay trong UI mà không cần quay lại danh sách
-        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, paid: updated.paid } : o))
-        setSelectedOrder(prev => prev && prev.id === order.id ? { ...prev, paid: updated.paid } : prev)
+        // Cập nhật ngay trong UI
+        const newPaid = updated?.paid !== undefined ? updated.paid : newPaidStatus
+        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, paid: newPaid } : o))
+        if (selectedOrder && selectedOrder.id === order.id) {
+          setSelectedOrder({ ...selectedOrder, paid: newPaid })
+        }
         // Cập nhật số liệu
         loadStats(token)
         showToast(`Cập nhật trạng thái thành công: ${action}`)
@@ -584,33 +591,51 @@ export default function Admin(){
       {/* Dashboard Overview */}
       {step === 'dashboard' && (
         <div className="space-y-6">
-          {/* Stats Cards */}
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-xl shadow-lg text-white">
+          {/* Stats Cards - 5 cards */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-blue-100 font-medium text-sm uppercase tracking-wide">Tổng Sản Phẩm</h3>
-                  <p className="text-4xl font-bold mt-2">{products.length}</p>
+                  <h3 className="text-blue-100 font-medium text-xs uppercase tracking-wide">Tổng SP</h3>
+                  <p className="text-3xl font-bold mt-1">{stats.day?.totalProducts || products.length}</p>
                 </div>
-                <div className="text-6xl opacity-20">📦</div>
+                <div className="text-4xl opacity-20">📦</div>
               </div>
             </div>
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-6 rounded-xl shadow-lg text-white">
+            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-orange-100 font-medium text-sm uppercase tracking-wide">Tổng Đơn Hàng</h3>
-                  <p className="text-4xl font-bold mt-2">{orders.length}</p>
+                  <h3 className="text-orange-100 font-medium text-xs uppercase tracking-wide">Tổng Đơn Đã Đặt</h3>
+                  <p className="text-3xl font-bold mt-1">{stats.day?.totalOrders || orders.length}</p>
                 </div>
-                <div className="text-6xl opacity-20">🛒</div>
+                <div className="text-4xl opacity-20">🛒</div>
               </div>
             </div>
-            <div className="bg-gradient-to-br from-green-500 to-green-600 p-6 rounded-xl shadow-lg text-white">
+            <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-green-100 font-medium text-sm uppercase tracking-wide">Đã Thanh Toán</h3>
-                  <p className="text-4xl font-bold mt-2">{orders.filter(o => o.paid).length}</p>
+                  <h3 className="text-yellow-100 font-medium text-xs uppercase tracking-wide">Chưa Giao</h3>
+                  <p className="text-3xl font-bold mt-1">{stats.day?.undeliveredOrders || 0}</p>
                 </div>
-                <div className="text-6xl opacity-20">✅</div>
+                <div className="text-4xl opacity-20">📦</div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-4 rounded-xl shadow-lg text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-purple-100 font-medium text-xs uppercase tracking-wide">Đã Giao Chưa TT</h3>
+                  <p className="text-3xl font-bold mt-1">{stats.day?.unpaidDeliveredOrders || 0}</p>
+                </div>
+                <div className="text-4xl opacity-20">💰</div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-red-500 to-red-600 p-4 rounded-xl shadow-lg text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-red-100 font-medium text-xs uppercase tracking-wide">Đơn Bom</h3>
+                  <p className="text-3xl font-bold mt-1">{stats.day?.bomOrders || 0}</p>
+                </div>
+                <div className="text-4xl opacity-20">💣</div>
               </div>
             </div>
           </div>
@@ -626,9 +651,9 @@ export default function Admin(){
                 <div className="mb-4 text-sm text-gray-600 font-medium">Biểu đồ so sánh (VNĐ)</div>
                 <div className="w-full bg-gray-50 rounded-lg p-6">
                   {(() => {
-                    const labels = ['Hôm nay','Tuần','Tháng']
-                    const data = [stats.day?.revenue || 0, stats.week?.revenue || 0, stats.month?.revenue || 0]
-                    const profit = [stats.day?.profit || 0, stats.week?.profit || 0, stats.month?.profit || 0]
+                    const labels = ['Hôm nay','Tháng','Năm']
+                    const data = [stats.day?.revenue || 0, stats.month?.revenue || 0, stats.year?.revenue || 0]
+                    const profit = [stats.day?.profit || 0, stats.month?.profit || 0, stats.year?.profit || 0]
                     const max = Math.max(...data, ...profit, 1)
                     const chartW = 400
                     const chartH = 200
@@ -688,15 +713,15 @@ export default function Admin(){
                   <div className="text-2xl font-bold text-orange-700">{(stats.day?.revenue || 0).toLocaleString()}₫</div>
                   <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.day?.profit || 0).toLocaleString()}₫</div>
                 </div>
-                <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg border-l-4 border-blue-500">
-                  <div className="text-xs text-blue-600 font-semibold uppercase tracking-wider mb-2">Tuần này</div>
-                  <div className="text-2xl font-bold text-blue-700">{(stats.week?.revenue || 0).toLocaleString()}₫</div>
-                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.week?.profit || 0).toLocaleString()}₫</div>
-                </div>
                 <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-6 rounded-lg border-l-4 border-purple-500">
                   <div className="text-xs text-purple-600 font-semibold uppercase tracking-wider mb-2">Tháng này</div>
                   <div className="text-2xl font-bold text-purple-700">{(stats.month?.revenue || 0).toLocaleString()}₫</div>
                   <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.month?.profit || 0).toLocaleString()}₫</div>
+                </div>
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg border-l-4 border-blue-500">
+                  <div className="text-xs text-blue-600 font-semibold uppercase tracking-wider mb-2">Năm này</div>
+                  <div className="text-2xl font-bold text-blue-700">{(stats.year?.revenue || 0).toLocaleString()}₫</div>
+                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.year?.profit || 0).toLocaleString()}₫</div>
                 </div>
               </div>
             </div>
@@ -1188,9 +1213,22 @@ export default function Admin(){
                 </div>
               </div>
 
-              <div className="flex gap-2 bg-yellow-50 p-4 rounded mb-6">
+              <div className="flex flex-wrap gap-2 bg-yellow-50 p-4 rounded mb-6">
                 <span className={`px-3 py-1 rounded text-white font-medium ${selectedOrder.paid ? 'bg-green-600' : 'bg-red-600'}`}>
                   {selectedOrder.paid ? '✓ Đã thanh toán' : '✗ Chưa thanh toán'}
+                </span>
+                <span className={`px-3 py-1 rounded text-white font-medium ${
+                  selectedOrder.status === 'delivered' ? 'bg-green-600' :
+                  selectedOrder.status === 'tomorrow_delivery' ? 'bg-blue-600' :
+                  selectedOrder.status === 'cancelled' ? 'bg-gray-600' :
+                  selectedOrder.status === 'bom' ? 'bg-red-600' :
+                  'bg-yellow-600'
+                }`}>
+                  {selectedOrder.status === 'delivered' ? '📦 Đã giao' :
+                   selectedOrder.status === 'tomorrow_delivery' ? '🚚 Giao ngày mai' :
+                   selectedOrder.status === 'cancelled' ? '❌ Đã hủy' :
+                   selectedOrder.status === 'bom' ? '💣 Bom hàng' :
+                   '⏳ Chưa giao'}
                 </span>
               </div>
 
@@ -1328,7 +1366,8 @@ export default function Admin(){
                             shipping: selectedOrder.shipping || 0,
                             discount: selectedOrder.discount || 0,
                             total,
-                            paid: selectedOrder.paid
+                            paid: selectedOrder.paid,
+                            status: selectedOrder.status || 'undelivered'
                           }
                           await Api.adminUpdateOrder(token, selectedOrder.id, payload)
                           await loadOrders(token)
@@ -1385,6 +1424,15 @@ export default function Admin(){
                   {selectedOrder.paid ? '❌ Chưa TT' : '✅ Đã TT'}
                 </button>
                 <button 
+                  onClick={() => {
+                    setNewStatus(selectedOrder.status || 'undelivered')
+                    setIsUpdatingStatus(true)
+                  }}
+                  className="px-4 py-2 rounded text-white bg-purple-600 hover:bg-purple-700 font-medium"
+                >
+                  📋 Cập Nhật Trạng Thái
+                </button>
+                <button 
                   onClick={() => deleteOrder(selectedOrder.id)}
                   className="px-4 py-2 rounded text-white bg-red-600 hover:bg-red-700"
                 >
@@ -1412,20 +1460,57 @@ export default function Admin(){
                       </tr>
                     </thead>
                     <tbody>
-                      {orders.map(o => (
+                      {orders
+                        .sort((a, b) => {
+                          const priority = {
+                            'tomorrow_delivery': 1,
+                            'delivered': 2,
+                            'undelivered': 3,
+                            'bom': 4,
+                            'cancelled': 5
+                          }
+                          const aPri = priority[a.status] || 3
+                          const bPri = priority[b.status] || 3
+                          if (aPri !== bPri) return aPri - bPri
+                          return new Date(b.createdAt) - new Date(a.createdAt)
+                        })
+                        .map(o => (
                         <tr key={o.id} className="border-b hover:bg-gray-50">
                           <td className="px-4 py-2 font-mono text-sm">{o.id}</td>
                           <td className="px-4 py-2">{o.customer_name}</td>
                           <td className="px-4 py-2 text-right font-medium text-orange-600">{o.total?.toLocaleString()}₫</td>
                           <td className="px-4 py-2 text-center">
-                            <span className={`px-3 py-1 rounded text-white text-sm font-medium ${o.paid ? 'bg-green-600' : 'bg-red-600'}`}>
-                              {o.paid ? '✓ Đã TT' : '✗ Chưa TT'}
-                            </span>
+                            <div className="flex flex-col gap-1 items-center">
+                              <span className={`px-2 py-1 rounded text-white text-xs font-medium ${o.paid ? 'bg-green-600' : 'bg-red-600'}`}>
+                                {o.paid ? '✓ TT' : '✗ Chưa TT'}
+                              </span>
+                              <span className={`px-2 py-1 rounded text-white text-xs font-medium ${
+                                o.status === 'delivered' ? 'bg-green-600' :
+                                o.status === 'tomorrow_delivery' ? 'bg-blue-600' :
+                                o.status === 'cancelled' ? 'bg-gray-600' :
+                                o.status === 'bom' ? 'bg-red-600' :
+                                'bg-yellow-600'
+                              }`}>
+                                {o.status === 'delivered' ? '📦 Đã giao' :
+                                 o.status === 'tomorrow_delivery' ? '🚚 Giao mai' :
+                                 o.status === 'cancelled' ? '❌ Hủy' :
+                                 o.status === 'bom' ? '💣 Bom' :
+                                 '⏳ Chưa giao'}
+                              </span>
+                            </div>
                           </td>
                           <td className="px-4 py-2 text-sm text-gray-600">{new Date(o.createdAt).toLocaleDateString('vi-VN')}</td>
                           <td className="px-4 py-2 text-center">
                             <button 
-                              onClick={() => setSelectedOrder(o)}
+                              onClick={async () => {
+                                try {
+                                  const fullOrder = await Api.adminGetOrder(token, o.id)
+                                  setSelectedOrder(fullOrder)
+                                } catch(e) {
+                                  console.error('Error loading order:', e)
+                                  setSelectedOrder(o)
+                                }
+                              }}
                               className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
                             >
                               👁️ Chi Tiết
@@ -1439,6 +1524,63 @@ export default function Admin(){
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Status Update Modal */}
+      {isUpdatingStatus && selectedOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded shadow-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-bold mb-4">Cập Nhật Trạng Thái Đơn Hàng</h3>
+            <p className="text-sm text-gray-600 mb-4">Đơn hàng: <span className="font-mono font-bold">{selectedOrder.id}</span></p>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Trạng thái</label>
+              <select
+                value={newStatus}
+                onChange={e => setNewStatus(e.target.value)}
+                className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="undelivered">⏳ Chưa giao</option>
+                <option value="tomorrow_delivery">🚚 Giao ngày mai</option>
+                <option value="delivered">📦 Đã giao</option>
+                <option value="bom">💣 Đơn bom</option>
+                <option value="cancelled">❌ Hủy đơn</option>
+              </select>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    console.log('Updating order status:', selectedOrder.id, newStatus)
+                    const payload = { status: newStatus }
+                    console.log('Sending payload:', payload)
+                    await Api.adminUpdateOrder(token, selectedOrder.id, payload)
+                    console.log('Update successful')
+                    const updated = { ...selectedOrder, status: newStatus }
+                    setSelectedOrder(updated)
+                    setOrders(orders.map(o => o.id === selectedOrder.id ? updated : o))
+                    setIsUpdatingStatus(false)
+                    showToast(`✅ Cập nhật trạng thái thành công`, 'success')
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  } catch (error) {
+                    console.error('Update error:', error)
+                    showToast(`❌ Lỗi: ${error.message}`, 'error')
+                  }
+                }}
+                className="flex-1 px-4 py-2 rounded text-white bg-purple-600 hover:bg-purple-700 font-medium"
+              >
+                💾 Cập Nhật
+              </button>
+              <button
+                onClick={() => setIsUpdatingStatus(false)}
+                className="flex-1 px-4 py-2 rounded text-white bg-gray-400 hover:bg-gray-500"
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

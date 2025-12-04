@@ -7,6 +7,7 @@ export default function Product(){
   const [p, setP] = useState(null)
   const [error, setError] = useState(null)
   const [active, setActive] = useState(0)
+  const [quantity, setQuantity] = useState(1)
   const [showAddedNotification, setShowAddedNotification] = useState(false)
   const navigate = useNavigate()
   useEffect(()=>{ 
@@ -20,7 +21,7 @@ export default function Product(){
   function addToCart(){
     const cart = JSON.parse(localStorage.getItem('tb_cart')||'[]')
     const found = cart.find(x=>x.id===id)
-    if(found) found.qty += 1; else cart.push({id, qty:1})
+    if(found) found.qty += quantity; else cart.push({id, qty: quantity})
     localStorage.setItem('tb_cart', JSON.stringify(cart))
     
     // Trigger cart update event
@@ -124,6 +125,32 @@ export default function Product(){
               <span>{p.weight}</span>
             </div>
           )}
+
+          {/* Quantity selector */}
+          <div className="mb-6">
+            <label className="block text-gray-700 font-semibold mb-2">Số lượng:</label>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                className="w-10 h-10 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded-lg font-bold text-xl"
+              >
+                −
+              </button>
+              <input
+                type="number"
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-20 text-center border-2 border-gray-300 rounded-lg p-2 font-semibold text-lg"
+                min="1"
+              />
+              <button
+                onClick={() => setQuantity(quantity + 1)}
+                className="w-10 h-10 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded-lg font-bold text-xl"
+              >
+                +
+              </button>
+            </div>
+          </div>
 
           <div className="space-y-3">
             <button 
