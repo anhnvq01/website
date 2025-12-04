@@ -28,6 +28,10 @@ export default function Product(){
     
     // Show notification
     setShowAddedNotification(true)
+    
+    // Scroll to top to see notification
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    
     setTimeout(() => setShowAddedNotification(false), 3000)
   }
   if(error) return <div className="container mx-auto p-4 text-red-600 font-semibold">Lỗi: {error}</div>

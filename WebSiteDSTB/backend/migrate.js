@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS admin (
   username TEXT PRIMARY KEY,
   password_hash TEXT
 );
+
+CREATE TABLE IF NOT EXISTS categories (
+  rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+  category TEXT UNIQUE NOT NULL
+);
 `);
 
 const insert = db.prepare('INSERT OR REPLACE INTO products (id,name,price,category,description,image,weight,promo_price) VALUES (@id,@name,@price,@category,@description,@image,@weight,@promo_price)');
@@ -47,6 +52,14 @@ const insertMany = db.transaction((rows) => {
   for (const r of rows) insert.run(r);
 });
 insertMany(demo);
+
+// Insert default categories
+const categories = ['Thịt Gác Bếp', 'Đồ Khô', 'Rau Rừng – Gia Vị', 'Rượu – Đồ Uống'];
+const insertCat = db.prepare('INSERT OR IGNORE INTO categories (category) VALUES (?)');
+const insertCatsMany = db.transaction((cats) => {
+  for (const c of cats) insertCat.run(c);
+});
+insertCatsMany(categories);
 
 // create default admin
 const cfgUser = process.env.ADMIN_USERNAME || 'admin';

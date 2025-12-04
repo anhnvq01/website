@@ -5,6 +5,7 @@ export default {
   // Products (public)
   products: (q, category) => API.get('/products', { params: { q, category } }).then(r => r.data),
   product: (id) => API.get(`/products/${id}`).then(r => r.data),
+  categories: () => API.get('/products/categories').then(r => r.data),
   
   // Orders (public)
   createOrder: (payload) => API.post('/orders', payload).then(r => r.data),
@@ -42,5 +43,11 @@ export default {
   adminDeleteOrder: (token, id) => API.delete(`/admin/orders/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data)
   ,
   adminUpdateOrder: (token, id, payload) => API.patch(`/admin/orders/${id}`, payload, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
-  adminGetStats: (token, period) => API.get('/admin/stats', { headers: { Authorization: 'Bearer ' + token }, params: { period } }).then(r => r.data)
+  adminGetStats: (token, period) => API.get('/admin/stats', { headers: { Authorization: 'Bearer ' + token }, params: { period } }).then(r => r.data),
+  
+  // Admin - Categories
+  adminGetCategories: (token) => API.get('/admin/categories', { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminAddCategory: (token, category) => API.post('/admin/categories', { category }, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminUpdateCategory: (token, id, category) => API.put(`/admin/categories/${id}`, { category }, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminDeleteCategory: (token, id) => API.delete(`/admin/categories/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data)
 }

@@ -21,16 +21,17 @@ export default function Home()
   }, [])
   return (
     <div>
-      <section className="hero container mx-auto px-4 py-6 md:py-10">
-        <div className="hero-slider relative overflow-hidden">
+      <section className="hero w-full h-48 md:h-60 lg:h-80 mb-8">
+        <div className="hero-slider relative w-full h-full overflow-hidden rounded-b-2xl">
           {slides.map((s, i)=> (
             <div key={i} className={"hero-slide absolute inset-0 transition-opacity duration-1000 " + (i===slide ? 'opacity-100 z-10' : 'opacity-0 z-0')}>
               <img src={s.image} alt={s.title} className="hero-image absolute inset-0 w-full h-full object-cover" />
-              <div className="hero-overlay absolute inset-0 flex items-center">
-                <div className="max-w-2xl animate-fade-in">
-                  <h1 className="drop-shadow-2xl text-white font-extrabold">{s.title}</h1>
-                  <p className="mt-3 text-lg md:text-2xl text-white font-bold drop-shadow-lg">{s.subtitle}</p>
-                  <button className="mt-6 bg-gradient-to-r from-orange-500 to-orange-600 text-white px-8 py-3 rounded-full font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300">
+              <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/40 to-transparent"></div>
+              <div className="absolute inset-0 flex items-center justify-start pl-14 md:pl-20 lg:pl-24 pr-14 md:pr-20">
+                <div className="max-w-md animate-fade-in">
+                  <h1 className="text-xl md:text-2xl lg:text-3xl text-white font-extrabold drop-shadow-2xl mb-1 md:mb-2">{s.title}</h1>
+                  <p className="text-xs md:text-sm lg:text-base text-white font-semibold drop-shadow-lg mb-2 md:mb-3">{s.subtitle}</p>
+                  <button className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-4 md:px-5 py-1.5 md:py-2 rounded-full font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 text-xs md:text-sm whitespace-nowrap">
                     Xem thêm →
                   </button>
                 </div>
@@ -38,29 +39,29 @@ export default function Home()
             </div>
           ))}
 
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2">
-            <button 
-              onClick={()=>setSlide(s=> (s-1+slides.length)%slides.length)} 
-              className="p-3 bg-white/90 hover:bg-white rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-110"
-              aria-label="Previous slide"
-            >
-              <svg className="w-5 h-5 text-green-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <button 
-              onClick={()=>setSlide(s=> (s+1)%slides.length)} 
-              className="p-3 bg-white/90 hover:bg-white rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-110"
-              aria-label="Next slide"
-            >
-              <svg className="w-5 h-5 text-green-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
+          {/* Navigation buttons - Left & Right */}
+          <button 
+            onClick={()=>setSlide(s=> (s-1+slides.length)%slides.length)} 
+            className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 z-20 p-2 md:p-3 bg-white/80 hover:bg-white rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-110"
+            aria-label="Previous slide"
+          >
+            <svg className="w-5 h-5 md:w-6 md:h-6 text-green-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          
+          <button 
+            onClick={()=>setSlide(s=> (s+1)%slides.length)} 
+            className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 z-20 p-2 md:p-3 bg-white/80 hover:bg-white rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-110"
+            aria-label="Next slide"
+          >
+            <svg className="w-5 h-5 md:w-6 md:h-6 text-green-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
 
           {/* Slide indicators */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+          <div className="absolute bottom-3 md:bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2">
             {slides.map((_, i) => (
               <button
                 key={i}
@@ -75,7 +76,7 @@ export default function Home()
         </div>
       </section>
 
-      <div className="container mx-auto p-4">
+      <div className="container mx-auto p-4 mt-32 md:mt-44 lg:mt-56">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-3">
             <span className="text-3xl">⭐</span>

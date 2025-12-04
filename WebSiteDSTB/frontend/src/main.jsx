@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 import './styles/index.css'
+import Api from './services/api'
 import Home from './pages/Home'
 import Category from './pages/Category'
 import Product from './pages/Product'
@@ -129,6 +130,7 @@ function App(){
   const [topbarHeight, setTopbarHeight] = useState(0)
   const [headerHeight, setHeaderHeight] = useState(0)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [categories, setCategories] = useState([])
 
   // Check if user is logged in
   useEffect(() => {
@@ -145,6 +147,24 @@ function App(){
       window.removeEventListener('storage', checkAuth)
       clearInterval(interval)
     }
+  }, [])
+
+  // Load categories from API
+  useEffect(() => {
+    Api.categories().then(cats => {
+      const categoryList = cats.map(c => c.category)
+      // Custom sort order
+      const order = ['Thịt Gác Bếp', 'Thịt nướng', 'Đồ Khô', 'Gạo', 'Rau Rừng – Gia Vị', 'Rượu – Đồ Uống']
+      categoryList.sort((a, b) => {
+        const indexA = order.indexOf(a)
+        const indexB = order.indexOf(b)
+        if (indexA === -1 && indexB === -1) return a.localeCompare(b)
+        if (indexA === -1) return 1
+        if (indexB === -1) return -1
+        return indexA - indexB
+      })
+      setCategories(categoryList)
+    }).catch(err => console.error('Failed to load categories:', err))
   }, [])
 
   function handleLogout() {
@@ -223,11 +243,9 @@ function App(){
                     </button>
                     <div className="absolute left-0 top-full pt-2 w-56 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
                       <div className="bg-white rounded-md shadow-lg py-1">
-                        <Link to="/category/Thịt Gác Bếp" className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-700">Thịt Gác Bếp</Link>
-                        <Link to="/category/Đồ Khô" className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-700">Đồ Khô</Link>
-                        <Link to="/category/Rau Rừng – Gia Vị" className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-700">Rau Rừng – Gia Vị</Link>
-                        <Link to="/category/Rượu – Đồ Uống" className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-700">Rượu – Đồ Uống</Link>
-                        <Link to="/category/Gạo" className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-700">Gạo</Link>
+                        {categories.map(cat => (
+                          <Link key={cat} to={`/category/${cat}`} className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-700">{cat}</Link>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -267,11 +285,9 @@ function App(){
                     </svg>
                   </button>
                   <div className="hidden">
-                    <Link to="/category/Thịt Gác Bếp" className="block py-1 pl-4 text-gray-600 mt-2" onClick={()=>setMobileOpen(false)}>Thịt Gác Bếp</Link>
-                    <Link to="/category/Đồ Khô" className="block py-1 pl-4 text-gray-600" onClick={()=>setMobileOpen(false)}>Đồ Khô</Link>
-                    <Link to="/category/Rau Rừng – Gia Vị" className="block py-1 pl-4 text-gray-600" onClick={()=>setMobileOpen(false)}>Rau Rừng – Gia Vị</Link>
-                    <Link to="/category/Rượu – Đồ Uống" className="block py-1 pl-4 text-gray-600" onClick={()=>setMobileOpen(false)}>Rượu – Đồ Uống</Link>
-                    <Link to="/category/Gạo" className="block py-1 pl-4 text-gray-600" onClick={()=>setMobileOpen(false)}>Gạo</Link>
+                    {categories.map((cat, idx) => (
+                      <Link key={cat} to={`/category/${cat}`} className={`block py-1 pl-4 text-gray-600 ${idx === 0 ? 'mt-2' : ''}`} onClick={()=>setMobileOpen(false)}>{cat}</Link>
+                    ))}
                   </div>
                 </div>
                 {isLoggedIn ? (
@@ -326,11 +342,9 @@ function App(){
               <div>
                 <h4 className="font-semibold text-gray-800 mb-3">Danh mục</h4>
                 <ul className="space-y-2 text-sm">
-                  <li><Link to="/category/Thịt Gác Bếp" className="text-gray-600 hover:text-orange-600">Thịt Gác Bếp</Link></li>
-                  <li><Link to="/category/Đồ Khô" className="text-gray-600 hover:text-orange-600">Đồ Khô</Link></li>
-                  <li><Link to="/category/Rau Rừng – Gia Vị" className="text-gray-600 hover:text-orange-600">Rau Rừng – Gia Vị</Link></li>
-                  <li><Link to="/category/Rượu – Đồ Uống" className="text-gray-600 hover:text-orange-600">Rượu – Đồ Uống</Link></li>
-                  <li><Link to="/category/Gạo" className="text-gray-600 hover:text-orange-600">Gạo</Link></li>
+                  {categories.map(cat => (
+                    <li key={cat}><Link to={`/category/${cat}`} className="text-gray-600 hover:text-orange-600">{cat}</Link></li>
+                  ))}
                 </ul>
               </div>
               <div>

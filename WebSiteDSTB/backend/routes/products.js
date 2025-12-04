@@ -32,6 +32,12 @@ router.get('/', (req, res) => {
   res.json(mapped);
 });
 
+// Public endpoint to get all categories
+router.get('/categories', (req, res) => {
+  const rows = db.prepare('SELECT * FROM categories ORDER BY category').all();
+  res.json(rows);
+});
+
 router.get('/:id', (req, res) => {
   const row = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
