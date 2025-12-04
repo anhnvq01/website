@@ -12,13 +12,37 @@ router.get('/', (req, res) => {
   if (category) { clauses.push('category = ?'); params.push(category); }
   if (clauses.length) sql += ' WHERE ' + clauses.join(' AND ');
   const rows = db.prepare(sql).all(...params);
-  res.json(rows);
+  // normalize images field: ensure an array is provided and include mainImage for frontend convenience
+  const mapped = rows.map(r => {
+    const out = Object.assign({}, r);
+    try{
+      if(out.images){
+        out.images = JSON.parse(out.images);
+      } else if(out.image){
+        out.images = [out.image];
+      } else {
+        out.images = [];
+      }
+    }catch(e){
+      out.images = out.image ? [out.image] : [];
+    }
+    out.mainImage = out.images.length ? out.images[0] : null;
+    return out;
+  })
+  res.json(mapped);
 });
 
 router.get('/:id', (req, res) => {
   const row = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
-  res.json(row);
+  const out = Object.assign({}, row);
+  try{
+    if(out.images){ out.images = JSON.parse(out.images) }
+    else if(out.image){ out.images = [out.image] }
+    else out.images = []
+  }catch(e){ out.images = out.image ? [out.image] : [] }
+  out.mainImage = out.images.length ? out.images[0] : null
+  res.json(out);
 });
 
 module.exports = router;

@@ -2,11 +2,45 @@ import axios from 'axios';
 const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000/api' });
 
 export default {
+  // Products (public)
   products: (q, category) => API.get('/products', { params: { q, category } }).then(r => r.data),
   product: (id) => API.get(`/products/${id}`).then(r => r.data),
+  
+  // Orders (public)
   createOrder: (payload) => API.post('/orders', payload).then(r => r.data),
   orders: () => API.get('/orders').then(r => r.data),
   order: (id) => API.get(`/orders/${id}`).then(r => r.data),
+  
+  // Admin - Auth
   adminLogin: (u,p) => API.post('/admin/login', { username: u, password: p }).then(r => r.data),
-  adminAddProduct: (token, payload) => API.post('/admin/products', payload, { headers: { Authorization: 'Bearer ' + token }}).then(r=>r.data)
+  
+  // Admin - Upload
+  adminUploadImage: (token, file) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return API.post('/admin/upload-image', formData, { 
+      headers: { 
+        Authorization: 'Bearer ' + token,
+        'Content-Type': 'multipart/form-data'
+      }
+    }).then(r => r.data);
+  },
+  
+  // Admin - Products
+  adminGetProducts: (token) => API.get('/admin/products', { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminGetProduct: (token, id) => API.get(`/admin/products/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminAddProduct: (token, payload) => API.post('/admin/products', payload, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminUpdateProduct: (token, id, payload) => API.put(`/admin/products/${id}`, payload, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminDeleteProduct: (token, id) => API.delete(`/admin/products/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  
+  // Admin - Orders
+  adminGetOrders: (token) => API.get('/admin/orders', { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminGetOrder: (token, id) => API.get(`/admin/orders/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminCreateOrder: (token, payload) => API.post('/admin/orders', payload, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminMarkOrderPaid: (token, id) => API.patch(`/admin/orders/${id}/mark-paid`, {}, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminMarkOrderUnpaid: (token, id) => API.patch(`/admin/orders/${id}/mark-unpaid`, {}, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminDeleteOrder: (token, id) => API.delete(`/admin/orders/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data)
+  ,
+  adminUpdateOrder: (token, id, payload) => API.patch(`/admin/orders/${id}`, payload, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminGetStats: (token, period) => API.get('/admin/stats', { headers: { Authorization: 'Bearer ' + token }, params: { period } }).then(r => r.data)
 }
