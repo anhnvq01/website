@@ -69,12 +69,12 @@ router.get('/me', auth, (req, res) => {
 });
 
 router.post('/products', auth, (req, res) => {
-  const { id, name, price, category, description, image, images, weight, promo_price } = req.body;
+  const { id, name, price, category, description, image, images, weight, promo_price, sold_count } = req.body;
   const pid = id || 'P' + Date.now();
   const gallery = ensureImagesArray(images, image);
   const mainImage = image || gallery[0] || '';
-  db.prepare('INSERT OR REPLACE INTO products (id,name,price,category,description,image,weight,promo_price,images) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(pid, name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery));
+  db.prepare('INSERT OR REPLACE INTO products (id,name,price,category,description,image,weight,promo_price,images,sold_count) VALUES (?,?,?,?,?,?,?,?,?,?)')
+    .run(pid, name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count || 0);
   res.json({ ok: true, id: pid });
 });
 
@@ -124,16 +124,16 @@ router.get('/products/:id', auth, (req, res) => {
 
 // Update product
 router.put('/products/:id', auth, (req, res) => {
-  const { name, price, category, description, image, images, weight, promo_price } = req.body;
+  const { name, price, category, description, image, images, weight, promo_price, sold_count } = req.body;
   const id = req.params.id;
   const gallery = ensureImagesArray(images, image);
   const mainImage = image || gallery[0] || '';
 
   db.prepare(`
     UPDATE products 
-    SET name = ?, price = ?, category = ?, description = ?, image = ?, weight = ?, promo_price = ?, images = ?
+    SET name = ?, price = ?, category = ?, description = ?, image = ?, weight = ?, promo_price = ?, images = ?, sold_count = ?
     WHERE id = ?
-  `).run(name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), id);
+  `).run(name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count ?? 0, id);
   
   res.json({ ok: true });
 });

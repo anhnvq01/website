@@ -54,7 +54,8 @@ export default function Admin(){
     image: '',
     images: [],
     weight: '',
-    promo_price: null
+    promo_price: null,
+    sold_count: 0
   })
   const [imagePreview, setImagePreview] = useState('https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm')
   const [gallery, setGallery] = useState([])
@@ -242,7 +243,8 @@ export default function Admin(){
       image: mainImage,
       images: parsedImages,
       weight: product.weight || '',
-      promo_price: product.promo_price ?? null
+      promo_price: product.promo_price ?? null,
+      sold_count: product.sold_count || 0
     })
     setGallery(parsedImages)
     setImagePreview(mainImage)
@@ -259,7 +261,8 @@ export default function Admin(){
       image: '',
       images: [],
       weight: '',
-      promo_price: null
+      promo_price: null,
+      sold_count: 0
     })
     setImagePreview('https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm')
     setGallery([])
@@ -849,6 +852,16 @@ export default function Admin(){
                   value={productForm.promo_price || ''} 
                   onChange={e=>setProductForm({...productForm, promo_price: e.target.value ? parseInt(e.target.value) : null})}
                   className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 font-medium mb-1">Số lượng đã bán</label>
+                <input 
+                  type="number" 
+                  value={productForm.sold_count || 0} 
+                  onChange={e=>setProductForm({...productForm, sold_count: parseInt(e.target.value) || 0})}
+                  className="w-full p-2 border rounded"
+                  min="0"
                 />
               </div>
             </div>
