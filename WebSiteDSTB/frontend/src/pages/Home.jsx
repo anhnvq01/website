@@ -68,54 +68,66 @@ export default function Home()
   const [hotPromo, setHotPromo] = useState([])
   const [tetProducts, setTetProducts] = useState([])
   const [categoryProducts, setCategoryProducts] = useState({})
+  const [categoryList, setCategoryList] = useState([])
   const [slide, setSlide] = useState(0)
   const slides = [
-    { title: 'Cùng Đặc Sản Tây Bắc', subtitle: 'Khám phá hương vị núi rừng', image: '/images/bg-1.jpg' },
-    { title: 'Sản phẩm chất lượng', subtitle: 'Rau rừng - Thịt gác bếp - Rượu vùng cao', image: '/images/bg-2.jpg' },
-    { title: 'Ưu đãi mỗi ngày', subtitle: 'Giảm giá, combo & quà tặng', image: '/images/bg-3.jpg' }
+    { title: 'Cùng Đặc Sản Sạch Tây Bắc', subtitle: 'Khám phá hương vị núi rừng', image: '/images/bg-1.jpg', showText: true },
+    { title: 'Sản phẩm chất lượng cao', subtitle: 'Rau rừng - Thịt gác bếp - Rượu vùng cao', image: '/images/bg-2.jpg', showText: true },
+    { title: 'Ưu đãi mỗi ngày', subtitle: 'Giảm giá, combo & quà tặng', image: '/images/bg-3.jpg', showText: true },
+    { title: '', subtitle: '', image: '/images/bg-4.png', showText: false }
   ]
   const tetCategoryName = 'Tết Nguyên Đán'
   const MAX_TOP = 12
   const MAX_TET = 12
   const MAX_PROMO = 8
   const timerRef = useRef(null)
-  const categories = ['Thịt Gác Bếp', 'Thịt Nướng', 'Đồ Khô', 'Rau Rừng – Gia Vị', 'Rượu – Đồ Uống', 'Gạo']
+  const defaultCategories = ['Thịt Gác Bếp', 'Thịt Nướng', 'Đồ Khô', 'Rau Rừng – Gia Vị', 'Rượu – Đồ Uống', 'Gạo']
   
   useEffect(()=>{ 
-    Api.products().then(allProducts => {
-      setItems(allProducts)
-      
-      // Top Selling - sorted by sold_count DESC
-      const sorted = [...allProducts].sort((a, b) => (b.sold_count || 0) - (a.sold_count || 0))
-      setTopSelling(sorted.slice(0, MAX_TOP))
+    const load = async () => {
+      try {
+        const [cats, allProducts] = await Promise.all([Api.categories(), Api.products()])
+        const orderedCats = (cats || []).map(c => c.category).filter(Boolean)
+        const catList = orderedCats.length ? orderedCats : defaultCategories
+        setCategoryList(catList)
+        setItems(allProducts)
+        
+        // Top Selling - sorted by sold_count DESC
+        const sorted = [...allProducts].sort((a, b) => (b.sold_count || 0) - (a.sold_count || 0))
+        setTopSelling(sorted.slice(0, MAX_TOP))
 
-      // Hot Promo - promo_price is discounted price
-      const promoSorted = [...allProducts]
-        .filter(p => p.promo_price && p.promo_price < p.price)
-        .map(p => ({
-          ...p,
-          _discount: Math.round((p.price - p.promo_price) / p.price * 100)
-        }))
-        .sort((a, b) => b._discount - a._discount)
-      setHotPromo(promoSorted.slice(0, MAX_PROMO))
+        // Hot Promo - promo_price is discounted price
+        const promoSorted = [...allProducts]
+          .filter(p => p.promo_price && p.promo_price < p.price)
+          .map(p => ({
+            ...p,
+            _discount: Math.round((p.price - p.promo_price) / p.price * 100)
+          }))
+          .sort((a, b) => b._discount - a._discount)
+        setHotPromo(promoSorted.slice(0, MAX_PROMO))
 
-      // Tet products (category contains "tet")
-      const tetList = allProducts.filter(p => normalizeText(p.category).includes('tet'))
-      setTetProducts(tetList.slice(0, MAX_TET))
-      
-      // Group by categories
-      const grouped = {}
-      categories.forEach(cat => {
-        grouped[cat] = allProducts.filter(p => p.category === cat).slice(0, 12)
-      })
-      setCategoryProducts(grouped)
-    })
+        // Tet products (is_tet flag is true)
+        const tetList = allProducts.filter(p => p.is_tet === 1 || p.is_tet === true)
+        setTetProducts(tetList.slice(0, MAX_TET))
+        
+        // Group by categories
+        const grouped = {}
+        catList.forEach(cat => {
+          grouped[cat] = allProducts.filter(p => p.category === cat).slice(0, 12)
+        })
+        setCategoryProducts(grouped)
+      } catch (err) {
+        console.error('Load home data error:', err)
+        setCategoryList(defaultCategories)
+      }
+    }
+    load()
   },[])
   
   useEffect(()=>{
     timerRef.current = setInterval(()=>{
       setSlide(s => (s+1) % slides.length)
-    }, 4000)
+    }, 8000)
     return ()=> clearInterval(timerRef.current)
   }, [])
   
@@ -125,13 +137,20 @@ export default function Home()
         <div className="hero-slider relative w-full h-full overflow-hidden rounded-b-2xl">
           {slides.map((s, i)=> (
             <div key={i} className={"hero-slide absolute inset-0 transition-opacity duration-1000 " + (i===slide ? 'opacity-100 z-10' : 'opacity-0 z-0')}>
-              <img src={s.image} alt={s.title} className="hero-image absolute inset-0 w-full h-full object-cover" />
-              <div className="absolute inset-0 flex items-center justify-start pl-8 md:pl-16 lg:pl-24">
-                <div className="max-w-2xl animate-fade-in">
-                  <h1 className="text-4xl md:text-6xl lg:text-7xl font-black leading-tight mb-3 text-white drop-shadow-[0_6px_20px_rgba(0,0,0,0.7)]">{s.title}</h1>
-                  <p className="text-xl md:text-3xl lg:text-3xl font-bold leading-relaxed text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.6)]">{s.subtitle}</p>
+              <img 
+                src={s.image} 
+                alt={s.title} 
+                className="hero-image absolute inset-0 w-full h-full object-cover"
+                loading={i === 0 ? "eager" : "lazy"}
+              />
+              {s.showText && (
+                <div className="absolute inset-0 flex items-center justify-start pl-8 md:pl-16 lg:pl-24">
+                  <div className="max-w-3xl animate-fade-in">
+                    <h1 className="text-3xl md:text-5xl lg:text-6xl font-black leading-tight mb-3 text-white drop-shadow-[0_6px_20px_rgba(0,0,0,0.7)] whitespace-nowrap">{s.title}</h1>
+                    <p className="text-lg md:text-2xl lg:text-3xl font-bold leading-relaxed text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.6)]">{s.subtitle}</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           ))}
 
@@ -198,12 +217,12 @@ export default function Home()
       {/* Tet Products Section */}
       <section className="py-16 bg-gradient-to-br from-red-50 to-orange-50">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between mb-10">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-3">
-              <span className="text-4xl">🎊</span>
-              Sản Phẩm Phục Vụ Tết Nguyên Đán
+          <div className="flex items-center justify-between mb-10 gap-4">
+            <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-800 flex items-center gap-2 md:gap-3 whitespace-nowrap">
+              <span className="text-3xl md:text-4xl">🎊</span>
+              <span className="whitespace-nowrap">Sản Phẩm Phục Vụ Tết Nguyên Đán</span>
             </h2>
-            <Link to={`/category/${tetCategoryName}`} className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
+            <Link to={`/category/${tetCategoryName}`} className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base whitespace-nowrap flex-shrink-0">
               Xem tất cả
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -234,7 +253,7 @@ export default function Home()
       </div>
 
       {/* Category Sections */}
-      {categories.map((cat, idx) => (
+      {categoryList.map((cat, idx) => (
         categoryProducts[cat] && categoryProducts[cat].length > 0 && (
           <section key={cat} className={`py-16 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
             <div className="container mx-auto px-4">
@@ -305,21 +324,14 @@ export default function Home()
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            {[
-              {name: 'Thịt Gác Bếp', icon: '🥓'},
-              {name: 'Thịt nướng', icon: '🔥'},
-              {name: 'Đồ Khô', icon: '🌰'},
-              {name: 'Rau Rừng – Gia Vị', icon: '🌿'},
-              {name: 'Rượu – Đồ Uống', icon: '🍷'},
-              {name: 'Gạo', icon: '🌾'}
-            ].map((cat, i)=> (
+            {(categoryList.length ? categoryList : defaultCategories).map((name, i)=> (
               <Link 
                 key={i} 
-                to={'/category/'+cat.name} 
+                to={'/category/'+name} 
                 className="bg-gradient-to-br from-orange-50 to-red-50 p-6 rounded-2xl shadow-md text-center hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 hover:from-orange-100 hover:to-red-100 group"
               >
-                <div className="text-5xl mb-3 group-hover:scale-125 transition-transform duration-300">{cat.icon}</div>
-                <p className="font-bold text-gray-800 text-sm">{cat.name}</p>
+                <div className="text-5xl mb-3 group-hover:scale-125 transition-transform duration-300">🏷️</div>
+                <p className="font-bold text-gray-800 text-sm">{name}</p>
               </Link>
             ))}
           </div>

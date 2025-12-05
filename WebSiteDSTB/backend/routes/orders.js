@@ -7,10 +7,19 @@ router.post('/', (req, res) => {
   const { customer, items, subtotal, shipping, discount, total, method } = req.body;
   if (!customer || !items) return res.status(400).json({ error: 'Missing' });
   const id = 'TB' + Date.now();
+  
+  // Insert order
   db.prepare(`INSERT INTO orders (id, createdAt, customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, new Date().toISOString(), customer.name, customer.phone, customer.address, JSON.stringify(items), subtotal, shipping, discount, total, method, 0
   );
+  
+  // Update sold_count for each product
+  const updateSold = db.prepare('UPDATE products SET sold_count = sold_count + ? WHERE id = ?');
+  items.forEach(item => {
+    updateSold.run(item.qty || 1, item.id);
+  });
+  
   res.json({ id, invoiceUrl: `/invoice/${id}` });
 });
 

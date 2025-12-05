@@ -35,6 +35,16 @@ export default function Product(){
     
     setTimeout(() => setShowAddedNotification(false), 3000)
   }
+  
+  function handleContinueShopping() {
+    // Go back to previous page or home
+    if (window.history.length > 1) {
+      navigate(-1)
+    } else {
+      navigate('/')
+    }
+  }
+  
   if(error) return <div className="container mx-auto p-4 text-red-600 font-semibold">Lỗi: {error}</div>
   if(!p) return <div className="container mx-auto p-4 text-gray-600">Đang tải sản phẩm...</div>
   const images = Array.isArray(p.images) && p.images.length ? p.images : (p.image ? [p.image] : [])
@@ -138,20 +148,40 @@ export default function Product(){
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                className="w-10 h-10 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded-lg font-bold text-xl"
+                disabled={quantity <= 1}
+                className={`w-12 h-12 flex items-center justify-center rounded-lg font-bold text-2xl transition-all duration-200 ${
+                  quantity <= 1 
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                    : 'bg-orange-500 hover:bg-orange-600 text-white hover:scale-110'
+                }`}
               >
                 −
               </button>
               <input
                 type="number"
                 value={quantity}
-                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-20 text-center border-2 border-gray-300 rounded-lg p-2 font-semibold text-lg"
+                onChange={(e) => {
+                  const val = e.target.value.trim()
+                  if (val === '') {
+                    setQuantity('')
+                  } else {
+                    const num = parseInt(val)
+                    if (!isNaN(num) && num >= 1) {
+                      setQuantity(num)
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  if (quantity === '' || quantity < 1) {
+                    setQuantity(1)
+                  }
+                }}
+                className="w-20 text-center border-2 border-orange-300 rounded-lg p-2 font-semibold text-lg focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
                 min="1"
               />
               <button
                 onClick={() => setQuantity(quantity + 1)}
-                className="w-10 h-10 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded-lg font-bold text-xl"
+                className="w-12 h-12 flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-bold text-2xl transition-all duration-200 hover:scale-110"
               >
                 +
               </button>
@@ -165,6 +195,13 @@ export default function Product(){
             >
               <span className="text-2xl">🛒</span>
               Thêm vào giỏ hàng
+            </button>
+            <button 
+              onClick={handleContinueShopping}
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2"
+            >
+              <span className="text-xl">🔄</span>
+              Tiếp tục mua sắm
             </button>
             <Link 
               to="/cart" 

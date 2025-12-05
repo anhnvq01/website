@@ -162,16 +162,6 @@ function App(){
   useEffect(() => {
     Api.categories().then(cats => {
       const categoryList = cats.map(c => c.category)
-      // Custom sort order
-      const order = ['Tết Nguyên Đán', 'Thịt Gác Bếp', 'Thịt nướng', 'Đồ Khô', 'Gạo', 'Rau Rừng – Gia Vị', 'Rượu – Đồ Uống']
-      categoryList.sort((a, b) => {
-        const indexA = order.indexOf(a)
-        const indexB = order.indexOf(b)
-        if (indexA === -1 && indexB === -1) return a.localeCompare(b)
-        if (indexA === -1) return 1
-        if (indexB === -1) return -1
-        return indexA - indexB
-      })
       setCategories(categoryList)
     }).catch(err => console.error('Failed to load categories:', err))
   }, [])
@@ -221,6 +211,9 @@ function App(){
                 📞 098.994.8583
               </a>
               <a href="#" className="hidden md:inline hover:scale-105 transition-transform">Facebook</a>
+              {!isLoggedIn && (
+                <Link to="/admin" className="inline bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-full text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap">🔑 Đăng nhập</Link>
+              )}
               {isLoggedIn && (
                 <button onClick={handleLogout} className="inline hover:underline hover:scale-105 transition-transform font-semibold">Đăng xuất</button>
               )}
@@ -264,9 +257,11 @@ function App(){
                 <div className="hidden lg:block w-64">
                   <SearchBox />
                 </div>
-                <Link to="/admin" className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-full hover:from-green-700 hover:to-green-800 shadow-md hover:shadow-lg transition-all text-sm" title="Quản trị">
-                  ⚙️ <span className="font-semibold hidden sm:inline">Admin</span>
-                </Link>
+                {isLoggedIn && (
+                  <Link to="/admin" className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-full hover:from-green-700 hover:to-green-800 shadow-md hover:shadow-lg transition-all text-sm" title="Quản trị">
+                    ⚙️ <span className="font-semibold hidden sm:inline">Admin</span>
+                  </Link>
+                )}
                 <CartIcon />
               </div>
             </div>
@@ -296,13 +291,15 @@ function App(){
                     ))}
                   </div>
                 </div>
-                <Link to="/admin" className="block py-2 border-b text-green-700 font-semibold" onClick={()=>setMobileOpen(false)}>
-                  ⚙️ Trang quản trị
-                </Link>
+                {isLoggedIn && (
+                  <Link to="/admin" className="block py-2 border-b text-green-700 font-semibold" onClick={()=>setMobileOpen(false)}>
+                    ⚙️ Trang quản trị
+                  </Link>
+                )}
                 {!isLoggedIn && (
                   <Link 
                     to="/admin" 
-                    className="block py-2 text-left text-blue-600 font-semibold" 
+                    className="block py-2 text-left text-blue-600 font-semibold border-b" 
                     onClick={()=>setMobileOpen(false)}
                   >
                     🔑 Đăng nhập

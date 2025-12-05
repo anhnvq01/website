@@ -69,12 +69,12 @@ router.get('/me', auth, (req, res) => {
 });
 
 router.post('/products', auth, (req, res) => {
-  const { id, name, price, category, description, image, images, weight, promo_price, sold_count } = req.body;
+  const { id, name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet } = req.body;
   const pid = id || 'P' + Date.now();
   const gallery = ensureImagesArray(images, image);
   const mainImage = image || gallery[0] || '';
-  db.prepare('INSERT OR REPLACE INTO products (id,name,price,category,description,image,weight,promo_price,images,sold_count) VALUES (?,?,?,?,?,?,?,?,?,?)')
-    .run(pid, name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count || 0);
+  db.prepare('INSERT OR REPLACE INTO products (id,name,price,category,description,image,weight,promo_price,images,sold_count,import_price,is_tet) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(pid, name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count || 0, import_price || 0, is_tet || 0);
   res.json({ ok: true, id: pid });
 });
 
@@ -124,16 +124,16 @@ router.get('/products/:id', auth, (req, res) => {
 
 // Update product
 router.put('/products/:id', auth, (req, res) => {
-  const { name, price, category, description, image, images, weight, promo_price, sold_count } = req.body;
+  const { name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet } = req.body;
   const id = req.params.id;
   const gallery = ensureImagesArray(images, image);
   const mainImage = image || gallery[0] || '';
 
   db.prepare(`
     UPDATE products 
-    SET name = ?, price = ?, category = ?, description = ?, image = ?, weight = ?, promo_price = ?, images = ?, sold_count = ?
+    SET name = ?, price = ?, category = ?, description = ?, image = ?, weight = ?, promo_price = ?, images = ?, sold_count = ?, import_price = ?, is_tet = ?
     WHERE id = ?
-  `).run(name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count ?? 0, id);
+  `).run(name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count ?? 0, import_price || 0, is_tet || 0, id);
   
   res.json({ ok: true });
 });
@@ -287,9 +287,30 @@ router.get('/stats', auth, (req, res) => {
   const row = db.prepare(`SELECT SUM(total) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ?`).get(startIso, endIso);
   const revenue = row && row.revenue ? Number(row.revenue) : 0;
 
-  // Profit margin percent from env or default to 30%
-  const marginPercent = Number(process.env.PROFIT_MARGIN_PERCENT || 30);
-  const profit = Math.round(revenue * (marginPercent / 100));
+  // Calculate profit based on actual import_price
+  const orders = db.prepare(`SELECT items_json FROM orders WHERE createdAt >= ? AND createdAt <= ?`).all(startIso, endIso);
+  let totalProfit = 0;
+  
+  orders.forEach(order => {
+    try {
+      const items = JSON.parse(order.items_json || '[]');
+      items.forEach(item => {
+        // Get product details including import_price
+        const product = db.prepare('SELECT import_price, promo_price, price FROM products WHERE id = ?').get(item.id);
+        if (product) {
+          const importPrice = Number(product.import_price || 0);
+          const salePrice = Number(product.promo_price || product.price || 0);
+          const quantity = Number(item.qty || 1);
+          const itemProfit = (salePrice - importPrice) * quantity;
+          totalProfit += itemProfit;
+        }
+      });
+    } catch (e) {
+      console.error('Error calculating profit for order:', e);
+    }
+  });
+  
+  const profit = Math.round(totalProfit);
 
   // Additional metrics
   const totalProducts = db.prepare('SELECT COUNT(*) as count FROM products').get().count || 0;
@@ -307,8 +328,7 @@ router.get('/stats', auth, (req, res) => {
   res.json({ 
     period, 
     revenue, 
-    profit, 
-    marginPercent,
+    profit,
     totalProducts,
     totalOrders,
     undeliveredOrders,
@@ -319,15 +339,17 @@ router.get('/stats', auth, (req, res) => {
 
 // Category management
 router.get('/categories', auth, (req, res) => {
-  const categories = db.prepare('SELECT rowid, category FROM categories ORDER BY category').all();
+  const categories = db.prepare('SELECT rowid, category, sort_order FROM categories ORDER BY COALESCE(sort_order, rowid)').all();
   res.json(categories);
 });
 
 router.post('/categories', auth, (req, res) => {
   const { category } = req.body;
   if (!category || !category.trim()) return res.status(400).json({ error: 'Category name required' });
-  db.prepare('INSERT OR IGNORE INTO categories (category) VALUES (?)').run(category.trim());
-  res.json({ ok: true, category: category.trim() });
+  const nextOrderRow = db.prepare('SELECT IFNULL(MAX(sort_order), 0) as maxOrder FROM categories').get();
+  const nextOrder = (nextOrderRow?.maxOrder || 0) + 1;
+  db.prepare('INSERT OR IGNORE INTO categories (category, sort_order) VALUES (?, ?)').run(category.trim(), nextOrder);
+  res.json({ ok: true, category: category.trim(), sort_order: nextOrder });
 });
 
 router.put('/categories/:id', auth, (req, res) => {
@@ -342,6 +364,27 @@ router.delete('/categories/:id', auth, (req, res) => {
   const { id } = req.params;
   db.prepare('DELETE FROM categories WHERE rowid = ?').run(id);
   res.json({ ok: true });
+});
+
+// Reorder categories: body { order: [rowid1, rowid2, ...] }
+router.post('/categories/reorder', auth, (req, res) => {
+  const { order } = req.body;
+  if (!Array.isArray(order) || order.length === 0) {
+    return res.status(400).json({ error: 'Order array required' });
+  }
+
+  const update = db.prepare('UPDATE categories SET sort_order = ? WHERE rowid = ?');
+  const txn = db.transaction((ids) => {
+    ids.forEach((id, idx) => update.run(idx + 1, id));
+  });
+
+  try {
+    txn(order);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Reorder categories error:', e);
+    res.status(500).json({ error: 'Reorder failed' });
+  }
 });
 
 module.exports = router;

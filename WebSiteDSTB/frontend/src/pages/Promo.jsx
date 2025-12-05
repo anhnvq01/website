@@ -19,9 +19,7 @@ export default function Promo(){
     <div className="container mx-auto p-4 py-10">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <p className="text-sm text-gray-500 uppercase tracking-wide">Ưu đãi</p>
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-800">Danh mục sản phẩm khuyến mãi HOT</h1>
-          <p className="text-gray-600 mt-2">Tất cả sản phẩm đang được giảm giá, ưu đãi.</p>
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-800">💥 Danh mục sản phẩm khuyến mãi HOT</h1>
         </div>
       </div>
 

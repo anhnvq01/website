@@ -79,48 +79,197 @@ export default function Checkout(){
   const [address, setAddress] = useState('')
   const [method, setMethod] = useState('COD')
   const [discount, setDiscount] = useState(0)
+  const [phoneError, setPhoneError] = useState('')
+  const [nameError, setNameError] = useState('')
+  const [addressError, setAddressError] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
   const navigate = useNavigate()
+  
   useEffect(()=> {
     const c = JSON.parse(localStorage.getItem('tb_cart')||'[]')
     setCart(c)
+    
+    // Load form data from localStorage
+    const savedForm = JSON.parse(localStorage.getItem('tb_checkout_form')||'{}')
+    if (savedForm.name) setName(savedForm.name)
+    if (savedForm.phone) setPhone(savedForm.phone)
+    if (savedForm.address) setAddress(savedForm.address)
+    if (savedForm.method) setMethod(savedForm.method)
   },[])
+  
+  // Save form data to localStorage on change
+  useEffect(() => {
+    localStorage.setItem('tb_checkout_form', JSON.stringify({
+      name, phone, address, method
+    }))
+  }, [name, phone, address, method])
+  
   async function submit(e){
     e.preventDefault()
+    
+    // Validate cart is not empty
+    if (cart.length === 0) {
+      setSuccessMessage('error')
+      setTimeout(() => setSuccessMessage(''), 3000)
+      return
+    }
+    
+    // Validate name
+    const trimmedName = name.trim()
+    if (!trimmedName || /^\s+$/.test(name)) {
+      setNameError('Vui lòng nhập họ tên')
+      return
+    }
+    setNameError('')
+    
+    // Validate phone
+    const phoneRegex = /(84|0[3|5|7|8|9])+([0-9]{8})\b/
+    if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
+      setPhoneError('Số điện thoại không hợp lệ. Vui lòng nhập số điện thoại Việt Nam (10 số, bắt đầu bằng 03, 05, 07, 08, 09 hoặc +84)')
+      return
+    }
+    setPhoneError('')
+    
+    // Validate address
+    const trimmedAddress = address.trim()
+    if (!trimmedAddress || /^\s+$/.test(address)) {
+      setAddressError('Vui lòng nhập địa chỉ giao hàng')
+      return
+    }
+    setAddressError('')
+    
     // need to enrich cart with product details from backend
     const enriched = await Promise.all(cart.map(async it => {
-      try { const p = await Api.product(it.id); return {...it, name: p.name, price: p.price} } catch { return {...it, name: it.id, price: 0} }
+      try { const p = await Api.product(it.id); return {...it, name: p.name, price: p.promo_price || p.price} } catch { return {...it, name: it.id, price: 0} }
     }))
     const subtotal = enriched.reduce((s,it)=> s + it.price*it.qty, 0)
     const shipping = Number(import.meta.env.VITE_SHIPPING || 30000)
     const total = subtotal + shipping - Number(discount||0)
     const payload = {
-      customer: { name, phone, address },
+      customer: { name: trimmedName, phone, address: trimmedAddress },
       items: enriched,
       subtotal, shipping, discount: Number(discount||0), total, method
     }
     const res = await Api.createOrder(payload)
+    
+    // Clear cart and form data
     localStorage.removeItem('tb_cart')
-    navigate('/invoice/'+res.id+'?tab=order')
+    localStorage.removeItem('tb_checkout_form')
+    
+    // Show success message
+    setSuccessMessage('success')
+    
+    // Redirect after showing message
+    setTimeout(() => {
+      navigate('/invoice/'+res.id+'?tab=order')
+    }, 2000)
   }
   return (
     <div className="container mx-auto p-4">
+      {successMessage === 'success' && (
+        <div className="fixed z-[9999] left-2 right-2 top-20 sm:left-auto sm:right-4 sm:top-24 sm:w-auto">
+          <div className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-2xl shadow-2xl animate-slide-in-right flex items-center gap-2 sm:gap-3 border-2 border-white max-w-full sm:max-w-sm">
+            <span className="text-2xl sm:text-3xl">✓</span>
+            <div>
+              <div className="font-bold text-base sm:text-lg">Đặt hàng thành công!</div>
+              <div className="text-xs sm:text-sm">Vui lòng hoàn tất thanh toán</div>
+            </div>
+          </div>
+        </div>
+      )}
+      {successMessage === 'error' && (
+        <div className="fixed z-[9999] left-2 right-2 top-20 sm:left-auto sm:right-4 sm:top-24 sm:w-auto">
+          <div className="bg-gradient-to-r from-red-600 to-red-700 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-2xl shadow-2xl animate-slide-in-right flex items-center gap-2 sm:gap-3 border-2 border-white max-w-full sm:max-w-sm">
+            <span className="text-2xl sm:text-3xl">✕</span>
+            <div>
+              <div className="font-bold text-base sm:text-lg">Giỏ hàng rỗng!</div>
+              <div className="text-xs sm:text-sm">Vui lòng thêm sản phẩm trước khi đặt hàng</div>
+            </div>
+          </div>
+        </div>
+      )}
       <h2 className="text-2xl font-semibold mb-4">Thanh toán</h2>
       <form onSubmit={submit} className="grid md:grid-cols-2 gap-4">
         <div className="p-4 bg-white rounded shadow">
-          <label>Họ tên</label>
-          <input required value={name} onChange={e=>setName(e.target.value)} className="w-full p-2 border rounded my-1"/>
-          <label>Số điện thoại</label>
-          <input required value={phone} onChange={e=>setPhone(e.target.value)} className="w-full p-2 border rounded my-1"/>
-          <label>Địa chỉ</label>
-          <textarea required value={address} onChange={e=>setAddress(e.target.value)} className="w-full p-2 border rounded my-1"/>
-          <label>Phương thức thanh toán</label>
+          <label className="block text-gray-700 font-semibold mb-2">Họ tên <span className="text-red-600">*</span></label>
+          <input 
+            required 
+            value={name} 
+            onChange={e=>{setName(e.target.value); setNameError('')}} 
+            className={`w-full p-2 border rounded my-1 ${nameError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
+          />
+          {nameError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-2 flex items-start gap-2">
+              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <span className="text-sm">{nameError}</span>
+            </div>
+          )}
+          
+          <label className="block text-gray-700 font-semibold mb-2 mt-4">Số điện thoại <span className="text-red-600">*</span></label>
+          <input 
+            required 
+            value={phone} 
+            onChange={e=>{setPhone(e.target.value); setPhoneError('')}} 
+            className={`w-full p-2 border rounded my-1 ${phoneError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
+          />
+          {phoneError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-2 flex items-start gap-2">
+              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <span className="text-sm">{phoneError}</span>
+            </div>
+          )}
+          
+          <label className="block text-gray-700 font-semibold mb-2 mt-4">Địa chỉ <span className="text-red-600">*</span></label>
+          <textarea 
+            required 
+            value={address} 
+            onChange={e=>{setAddress(e.target.value); setAddressError('')}} 
+            className={`w-full p-2 border rounded my-1 ${addressError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
+            placeholder="Số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành phố"
+          />
+          {addressError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-2 flex items-start gap-2">
+              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <span className="text-sm">{addressError}</span>
+            </div>
+          )}
+          
+          <label className="block text-gray-700 font-semibold mb-2 mt-4">Phương thức thanh toán <span className="text-red-600">*</span></label>
           <select value={method} onChange={e=>setMethod(e.target.value)} className="w-full p-2 border rounded my-1">
-            <option value="COD">COD</option>
-            <option value="BANK">Chuyển khoản</option>
+            <option value="COD">COD (Thanh toán khi nhận hàng)</option>
+            <option value="BANK">Chuyển khoản ngân hàng</option>
           </select>
           
-          <label>Mã giảm (VND)</label>
-          <input value={discount} onChange={e=>setDiscount(e.target.value)} className="w-full p-2 border rounded my-1"/>
+          {/* Shipping info */}
+          <div className="mt-4 bg-white border-l-4 border-orange-500 shadow-md rounded-r-lg p-4">
+            <h4 className="font-bold text-gray-800 mb-3 flex items-center gap-2 text-base">
+              🚚 Thông tin vận chuyển
+            </h4>
+            <div className="space-y-3 text-sm">
+              <div className="bg-orange-50 rounded-lg p-3 border-l-2 border-orange-400">
+                <div className="font-semibold text-orange-800 mb-1">▸ Nội thành Hà Nội</div>
+                <div className="text-gray-700">
+                  Giao hàng nhanh trong ngày, phí ship từ <span className="font-bold text-orange-600">30.000đ/đơn</span> (tùy khu vực)
+                </div>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-3 border-l-2 border-blue-400">
+                <div className="font-semibold text-blue-800 mb-1">▸ Giao hàng toàn quốc</div>
+                <div className="text-gray-700">
+                  Phí ship cố định <span className="font-bold text-blue-600">50.000đ/đơn</span>, không giới hạn số lượng
+                </div>
+              </div>
+              <div className="text-xs text-gray-500 bg-gray-50 rounded p-2 italic">
+                💡 Lưu ý: Một số sản phẩm đặc biệt (Trâu, Bò, Cá gác bếp từ 50.000đ/kg) có thể phát sinh phí vận chuyển cao hơn
+              </div>
+            </div>
+          </div>
+          
           <div className="mt-4"><button className="w-full bg-green-700 hover:bg-green-800 text-white px-4 py-3 rounded-lg font-semibold">Xác nhận đặt hàng</button></div>
         </div>
         <div className="p-4 bg-white rounded shadow">
