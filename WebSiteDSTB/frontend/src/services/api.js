@@ -14,6 +14,7 @@ export default {
   
   // Admin - Auth
   adminLogin: (u,p) => API.post('/admin/login', { username: u, password: p }).then(r => r.data),
+  adminMe: (token) => API.get('/admin/me', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.data),
   
   // Admin - Upload
   adminUploadImage: (token, file) => {

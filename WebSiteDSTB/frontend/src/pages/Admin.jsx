@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import Api from '../services/api'
+import html2canvas from 'html2canvas'
 
 export default function Admin(){
   const [step, setStep] = useState('login') // login, dashboard, products, orders, add-product, edit-product
@@ -31,12 +32,10 @@ export default function Admin(){
   useEffect(() => {
     const savedToken = localStorage.getItem('admin_token')
     if (savedToken) {
+      // Try to validate; if 401, show login form without clearing token yet
       setToken(savedToken)
       setStep('dashboard')
-      loadProducts(savedToken)
-      loadOrders(savedToken)
-      loadStats(savedToken)
-      loadCategories(savedToken)
+      validateAndLoad(savedToken)
     }
   }, [])
 
@@ -55,7 +54,9 @@ export default function Admin(){
     images: [],
     weight: '',
     promo_price: null,
-    sold_count: 0
+    sold_count: 0,
+    import_price: 0,
+    is_tet: false
   })
   const [imagePreview, setImagePreview] = useState('https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm')
   const [gallery, setGallery] = useState([])
@@ -68,7 +69,9 @@ export default function Admin(){
   const [orderItems, setOrderItems] = useState([])
   const [editingOrderId, setEditingOrderId] = useState(null)
   const [isEditingOrder, setIsEditingOrder] = useState(false)
+  const [isEditingCustomerInfo, setIsEditingCustomerInfo] = useState(false)
   const [editOrderItems, setEditOrderItems] = useState([])
+  const [editInvoiceInfo, setEditInvoiceInfo] = useState(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [newStatus, setNewStatus] = useState('')
   const [stats, setStats] = useState({})
@@ -81,6 +84,15 @@ export default function Admin(){
     discount: 0,
     paid: false
   })
+
+  const invoiceInfo = editInvoiceInfo || {
+    customer_name: '',
+    customer_phone: '',
+    customer_address: '',
+    method: 'COD',
+    shipping: 0,
+    discount: 0
+  }
 
   function parseImagesField(value, fallback) {
     if (Array.isArray(value)) return value.filter(Boolean)
@@ -107,19 +119,65 @@ export default function Admin(){
     e.preventDefault()
     try {
       const res = await Api.adminLogin(user, pass)
-      setToken(res.token)
       localStorage.setItem('admin_token', res.token)
-      setStep('dashboard')
-      loadProducts(res.token)
-      loadOrders(res.token)
-      loadStats(res.token)
+      // Notify other parts of the app (e.g., header) that auth state changed
+      window.dispatchEvent(new Event('storage'))
+      await bootstrapAuth(res.token)
     } catch(e) { showToast('Đăng nhập thất bại', 'error') }
   }
 
-  function logout() {
+  function logout(message) {
     localStorage.removeItem('admin_token')
     setToken('')
     setStep('login')
+    setProducts([])
+    setOrders([])
+    if (message) showToast(message, 'error')
+    window.dispatchEvent(new Event('storage'))
+  }
+
+  const handleAuthError = (err) => {
+    if (err?.response?.status === 401) {
+      showToast('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại', 'error')
+      setStep('login')
+      return true
+    }
+    return false
+  }
+
+  async function validateAndLoad(tk) {
+    try {
+      await Api.adminMe(tk)
+      await Promise.all([
+        loadProducts(tk),
+        loadOrders(tk),
+        loadStats(tk),
+        loadCategories(tk)
+      ])
+    } catch (e) {
+      if (e?.response?.status === 401) {
+        showToast('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại', 'error')
+        setStep('login')
+      } else {
+        console.error('Load error:', e)
+      }
+    }
+  }
+
+  async function bootstrapAuth(tk) {
+    try {
+      await Api.adminMe(tk)
+      setToken(tk)
+      setStep('dashboard')
+      await Promise.all([
+        loadProducts(tk),
+        loadOrders(tk),
+        loadStats(tk),
+        loadCategories(tk)
+      ])
+    } catch (e) {
+      handleAuthError(e)
+    }
   }
 
   async function loadProducts(tk) {
@@ -127,10 +185,12 @@ export default function Admin(){
       const data = await Api.adminGetProducts(tk)
       const normalized = data.map(p => ({
         ...p,
-        images: parseImagesField(p.images, p.image)
+        images: parseImagesField(p.images, p.image),
+        import_price: Number(p.import_price || 0),
+        is_tet: !!p.is_tet
       }))
       setProducts(normalized)
-    } catch(e) { console.error(e) }
+    } catch(e) { if (!handleAuthError(e)) console.error(e) }
   }
 
   async function loadOrders(tk) {
@@ -138,7 +198,7 @@ export default function Admin(){
       const data = await Api.adminGetOrders(tk)
       console.log('Orders loaded:', data)
       setOrders(data)
-    } catch(e) { console.error(e) }
+    } catch(e) { if (!handleAuthError(e)) console.error(e) }
   }
 
   async function loadStats(tk) {
@@ -147,7 +207,7 @@ export default function Admin(){
       const month = await Api.adminGetStats(tk, 'month')
       const year = await Api.adminGetStats(tk, 'year')
       setStats({ day, month, year })
-    } catch(e) { console.error(e) }
+    } catch(e) { if (!handleAuthError(e)) console.error(e) }
   }
 
   async function loadCategories(tk) {
@@ -155,8 +215,10 @@ export default function Admin(){
       const data = await Api.adminGetCategories(tk)
       setCategories(data)
     } catch(e) { 
-      console.error(e)
-      showToast('Lỗi tải danh mục', 'error')
+      if (!handleAuthError(e)) {
+        console.error(e)
+        showToast('Lỗi tải danh mục', 'error')
+      }
     }
   }
 
@@ -177,7 +239,9 @@ export default function Admin(){
       setUploadedFile(file.name)
       showToast('Tải ảnh thành công!')
     } catch(err) {
-      showToast('Lỗi tải ảnh: ' + (err.response?.data?.error || err.message), 'error')
+      if (!handleAuthError(err)) {
+        showToast('Lỗi tải ảnh: ' + (err.response?.data?.error || err.message), 'error')
+      }
     } finally {
       setUploading(false)
     }
@@ -187,7 +251,9 @@ export default function Admin(){
     e.preventDefault()
     const payload = {
       ...productForm,
-      images: gallery
+      images: gallery,
+      import_price: Number(productForm.import_price) || 0,
+      is_tet: productForm.is_tet ? 1 : 0
     }
     if (!payload.image && gallery.length) {
       payload.image = gallery[0]
@@ -204,22 +270,22 @@ export default function Admin(){
 
     try {
       if (editingId) {
+        console.log('Updating product with payload:', payload)
         await Api.adminUpdateProduct(token, editingId, payload)
         showToast('Cập nhật sản phẩm thành công')
       } else {
+        console.log('Adding product with payload:', payload)
         await Api.adminAddProduct(token, payload)
         showToast('Thêm sản phẩm thành công')
         resetProductForm()
         setEditingId(null)
-        loadProducts(token)
         window.scrollTo({ top: 0, behavior: 'smooth' })
-        return
       }
       resetProductForm()
       setEditingId(null)
       setStep('products')
-      loadProducts(token)
-    } catch(e){ showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
+      await loadProducts(token)
+    } catch(e){ if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
   }
 
   async function deleteProduct(id) {
@@ -228,7 +294,7 @@ export default function Admin(){
         await Api.adminDeleteProduct(token, id)
         showToast('Xóa sản phẩm thành công')
         loadProducts(token)
-      } catch(e) { showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
+      } catch(e) { if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
     })
   }
 
@@ -244,7 +310,9 @@ export default function Admin(){
       images: parsedImages,
       weight: product.weight || '',
       promo_price: product.promo_price ?? null,
-      sold_count: product.sold_count || 0
+      sold_count: product.sold_count || 0,
+      import_price: Number(product.import_price || 0),
+      is_tet: !!product.is_tet
     })
     setGallery(parsedImages)
     setImagePreview(mainImage)
@@ -262,7 +330,9 @@ export default function Admin(){
       images: [],
       weight: '',
       promo_price: null,
-      sold_count: 0
+      sold_count: 0,
+      import_price: 0,
+      is_tet: false
     })
     setImagePreview('https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm')
     setGallery([])
@@ -289,7 +359,7 @@ export default function Admin(){
         // Cập nhật số liệu
         loadStats(token)
         showToast(`Cập nhật trạng thái thành công: ${action}`)
-      } catch(e) { showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
+      } catch(e) { if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
     })
   }
 
@@ -301,7 +371,7 @@ export default function Admin(){
         setSelectedOrder(null)
         await loadOrders(token)
         window.scrollTo({ top: 0, behavior: 'smooth' })
-      } catch(e) { showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
+      } catch(e) { if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
     })
   }
 
@@ -316,7 +386,7 @@ export default function Admin(){
       await loadCategories(token)
       showToast('Thêm danh mục thành công')
     } catch(e) {
-      showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
+      if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
     }
   }
 
@@ -331,7 +401,7 @@ export default function Admin(){
       await loadCategories(token)
       showToast('Cập nhật danh mục thành công')
     } catch(e) {
-      showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
+      if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
     }
   }
 
@@ -342,22 +412,33 @@ export default function Admin(){
         await loadCategories(token)
         showToast('Xóa danh mục thành công')
       } catch(e) {
-        showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
+        if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
       }
     })
   }
 
-  function logout() {
-    localStorage.removeItem('admin_token')
-    setToken('')
-    setStep('login')
-    setProducts([])
-    setOrders([])
-    // Trigger storage event for other tabs/components
-    window.dispatchEvent(new Event('storage'))
+  // Order item management
+  function mergeSimilarItems(items = []) {
+    const grouped = new Map()
+    items.forEach(raw => {
+      const item = { ...raw }
+      const key = item.id ? `id-${item.id}` : `name-${(item.name || '').trim().toLowerCase()}-${item.price || 0}`
+      const existing = grouped.get(key)
+      if (existing) {
+        existing.qty += Number(item.qty) || 0
+        existing.price = Number(item.price) || existing.price
+        existing.name = item.name || existing.name
+      } else {
+        grouped.set(key, {
+          ...item,
+          qty: Number(item.qty) || 1,
+          price: Number(item.price) || 0
+        })
+      }
+    })
+    return Array.from(grouped.values())
   }
 
-  // Order item management
   function addOrderItem(productId = null) {
     const newItem = {
       id: productId || '',
@@ -405,12 +486,16 @@ export default function Admin(){
       return
     }
     
-    if (orderItems.length === 0) {
+    const compactItems = mergeSimilarItems(orderItems)
+
+    if (compactItems.length === 0) {
       showToast('Vui lòng thêm ít nhất 1 sản phẩm', 'error')
       return
     }
 
-    const subtotal = orderItems.reduce((sum, item) => sum + (item.price * item.qty), 0)
+    setOrderItems(compactItems)
+
+    const subtotal = compactItems.reduce((sum, item) => sum + (item.price * item.qty), 0)
     const total = subtotal + orderForm.shipping - orderForm.discount
 
     try {
@@ -419,7 +504,7 @@ export default function Admin(){
           customer_name: orderForm.customer_name,
           customer_phone: orderForm.customer_phone,
           customer_address: orderForm.customer_address,
-          items_json: orderItems,
+          items_json: compactItems,
           subtotal,
           shipping: orderForm.shipping,
           discount: orderForm.discount,
@@ -433,7 +518,7 @@ export default function Admin(){
           customer_name: orderForm.customer_name,
           customer_phone: orderForm.customer_phone,
           customer_address: orderForm.customer_address,
-          items_json: orderItems,
+          items_json: compactItems,
           subtotal,
           shipping: orderForm.shipping,
           discount: orderForm.discount,
@@ -471,7 +556,7 @@ export default function Admin(){
       discount: order.discount || 0,
       paid: !!order.paid
     })
-    setOrderItems(order.items_json || [])
+    setOrderItems(mergeSimilarItems(order.items_json || []))
     setStep('add-order')
   }
 
@@ -757,7 +842,9 @@ export default function Admin(){
                     <th className="px-4 py-2 text-left">ID</th>
                     <th className="px-4 py-2 text-left">Tên</th>
                     <th className="px-4 py-2 text-right">Giá</th>
+                    <th className="px-4 py-2 text-right">Giá nhập</th>
                     <th className="px-4 py-2 text-left">Danh Mục</th>
+                    <th className="px-4 py-2 text-center">Tết</th>
                     <th className="px-4 py-2 text-right">KM</th>
                     <th className="px-4 py-2 text-center">Hành Động</th>
                   </tr>
@@ -768,7 +855,11 @@ export default function Admin(){
                       <td className="px-4 py-2 font-mono text-sm">{p.id}</td>
                       <td className="px-4 py-2">{p.name}</td>
                       <td className="px-4 py-2 text-right font-medium">{p.price.toLocaleString()}₫</td>
+                      <td className="px-4 py-2 text-right text-gray-700">{(p.import_price || 0).toLocaleString()}₫</td>
                       <td className="px-4 py-2 text-sm">{p.category}</td>
+                      <td className="px-4 py-2 text-center">
+                        {p.is_tet ? <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-semibold">Tết</span> : '-' }
+                      </td>
                       <td className="px-4 py-2 text-right text-orange-600 font-medium">{p.promo_price ? p.promo_price.toLocaleString() + '₫' : '-'}</td>
                       <td className="px-4 py-2 text-center">
                         <button 
@@ -817,6 +908,27 @@ export default function Admin(){
                   className="w-full p-2 border rounded"
                   required
                 />
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-700 font-medium mb-1">Giá nhập (₫)</label>
+                <input 
+                  type="number" 
+                  value={productForm.import_price}
+                  onChange={e=>setProductForm({...productForm, import_price: parseInt(e.target.value) || 0})}
+                  className="w-full p-2 border rounded"
+                  min="0"
+                />
+              </div>
+              <div className="flex items-center gap-2 mt-7">
+                <input 
+                  type="checkbox"
+                  checked={productForm.is_tet}
+                  onChange={e=>setProductForm({...productForm, is_tet: e.target.checked})}
+                />
+                <label className="text-gray-700 font-medium">Thuộc danh mục Tết</label>
               </div>
             </div>
 
@@ -1170,84 +1282,40 @@ export default function Admin(){
           </div>
 
           {selectedOrder ? (
-            <div className="bg-white p-6 rounded shadow max-w-3xl">
-              <button 
-                onClick={() => setSelectedOrder(null)}
-                className="mb-4 bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600"
-              >
-                ← Quay Lại
-              </button>
+            <div className="bg-white p-6 rounded-2xl shadow-xl border border-gray-100 max-w-5xl mx-auto space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button 
+                  onClick={() => setSelectedOrder(null)}
+                  className="inline-flex items-center gap-2 text-gray-600 bg-gray-100 px-3 py-2 rounded-lg hover:bg-gray-200"
+                >
+                  ← Quay Lại
+                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold text-sm">#{selectedOrder.id}</span>
+                  <span className={`px-3 py-1 rounded-full text-white text-sm ${selectedOrder.paid ? 'bg-green-600' : 'bg-red-500'}`}>
+                    {selectedOrder.paid ? '✓ Đã thanh toán' : '✗ Chưa thanh toán'}
+                  </span>
+                  <span className={`px-3 py-1 rounded-full text-white text-sm ${
+                    selectedOrder.status === 'delivered' ? 'bg-green-600' :
+                    selectedOrder.status === 'tomorrow_delivery' ? 'bg-blue-600' :
+                    selectedOrder.status === 'cancelled' ? 'bg-gray-600' :
+                    selectedOrder.status === 'bom' ? 'bg-red-600' :
+                    'bg-yellow-600'
+                  }`}>
+                    {selectedOrder.status === 'delivered' ? '📦 Đã giao' :
+                     selectedOrder.status === 'tomorrow_delivery' ? '🚚 Giao ngày mai' :
+                     selectedOrder.status === 'cancelled' ? '❌ Đã hủy' :
+                     selectedOrder.status === 'bom' ? '💣 Bom hàng' :
+                     '⏳ Chưa giao'}
+                  </span>
+                </div>
+              </div>
 
-              <h3 className="text-xl font-semibold mb-4">Chi tiết đơn hàng #{selectedOrder.id}</h3>
+              <h3 className="text-2xl font-bold text-gray-800">Chi tiết đơn hàng</h3>
               
-              <div className="grid md:grid-cols-2 gap-6 mb-6">
-                <div className="bg-gray-50 p-4 rounded">
-                  <h4 className="font-semibold text-gray-700 mb-2">Thông tin khách</h4>
-                  <p><strong>Tên:</strong> {selectedOrder.customer_name}</p>
-                  <p><strong>SĐT:</strong> {selectedOrder.customer_phone}</p>
-                  <p><strong>Địa chỉ:</strong> {selectedOrder.customer_address}</p>
-                  <p><strong>Ngày:</strong> {new Date(selectedOrder.createdAt).toLocaleString('vi-VN')}</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded">
-                  <h4 className="font-semibold text-gray-700 mb-2">Thanh toán</h4>
-                  <p><strong>Phương thức:</strong> {selectedOrder.method}</p>
-                  <p><strong>Tạm tính:</strong> {selectedOrder.subtotal?.toLocaleString()}₫</p>
-                  <p><strong>Vận chuyển:</strong> {selectedOrder.shipping?.toLocaleString()}₫</p>
-                  {Number(selectedOrder.discount) > 0 && (
-                    <p><strong>Giảm:</strong> {Number(selectedOrder.discount).toLocaleString()}₫</p>
-                  )}
-                  <p className="text-lg font-bold text-orange-600 mt-2"><strong>Tổng:</strong> {selectedOrder.total?.toLocaleString()}₫</p>
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <h4 className="font-semibold text-gray-700 mb-2">Danh sách sản phẩm</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-100">
-                      <tr>
-                        <th className="px-3 py-2 text-left">Sản phẩm</th>
-                        <th className="px-3 py-2 text-right">SL</th>
-                        <th className="px-3 py-2 text-right">Giá</th>
-                        <th className="px-3 py-2 text-right">Tổng</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedOrder.items_json?.map((item, i) => (
-                        <tr key={i} className="border-b">
-                          <td className="px-3 py-2">{item.name}</td>
-                          <td className="px-3 py-2 text-right">{item.qty}</td>
-                          <td className="px-3 py-2 text-right">{item.price?.toLocaleString()}₫</td>
-                          <td className="px-3 py-2 text-right">{(item.qty * (item.price || 0)).toLocaleString()}₫</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2 bg-yellow-50 p-4 rounded mb-6">
-                <span className={`px-3 py-1 rounded text-white font-medium ${selectedOrder.paid ? 'bg-green-600' : 'bg-red-600'}`}>
-                  {selectedOrder.paid ? '✓ Đã thanh toán' : '✗ Chưa thanh toán'}
-                </span>
-                <span className={`px-3 py-1 rounded text-white font-medium ${
-                  selectedOrder.status === 'delivered' ? 'bg-green-600' :
-                  selectedOrder.status === 'tomorrow_delivery' ? 'bg-blue-600' :
-                  selectedOrder.status === 'cancelled' ? 'bg-gray-600' :
-                  selectedOrder.status === 'bom' ? 'bg-red-600' :
-                  'bg-yellow-600'
-                }`}>
-                  {selectedOrder.status === 'delivered' ? '📦 Đã giao' :
-                   selectedOrder.status === 'tomorrow_delivery' ? '🚚 Giao ngày mai' :
-                   selectedOrder.status === 'cancelled' ? '❌ Đã hủy' :
-                   selectedOrder.status === 'bom' ? '💣 Bom hàng' :
-                   '⏳ Chưa giao'}
-                </span>
-              </div>
-
-              {isEditingOrder ? (
-                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
-                  <h4 className="font-semibold text-lg mb-4 text-blue-900">✏️ Chỉnh sửa đơn hàng</h4>
+              {isEditingCustomerInfo ? (
+                <div className="bg-green-50 border-2 border-green-200 rounded-lg p-6 mb-6">
+                  <h4 className="font-semibold text-lg mb-4 text-green-900">✏️ Sửa thông tin khách hàng & thanh toán</h4>
                   
                   <div className="grid md:grid-cols-2 gap-4 mb-4">
                     <div>
@@ -1278,6 +1346,201 @@ export default function Admin(){
                       <input type="number" className="w-full p-2 border rounded" value={selectedOrder.discount || 0} onChange={e=>setSelectedOrder(s=>({...s, discount: Number(e.target.value||0)}))} />
                     </div>
                   </div>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const subtotal = selectedOrder.items_json.reduce((sum, item) => sum + (item.price * item.qty), 0)
+                          const total = subtotal + (selectedOrder.shipping || 0) - (selectedOrder.discount || 0)
+                          const payload = {
+                            customer_name: selectedOrder.customer_name,
+                            customer_phone: selectedOrder.customer_phone,
+                            customer_address: selectedOrder.customer_address,
+                            method: selectedOrder.method,
+                            items_json: selectedOrder.items_json,
+                            subtotal,
+                            shipping: selectedOrder.shipping || 0,
+                            discount: selectedOrder.discount || 0,
+                            total,
+                            paid: selectedOrder.paid,
+                            status: selectedOrder.status || 'undelivered'
+                          }
+                          await Api.adminUpdateOrder(token, selectedOrder.id, payload)
+                          await loadOrders(token)
+                          const updated = orders.find(o => o.id === selectedOrder.id) || selectedOrder
+                          setSelectedOrder(updated)
+                          setIsEditingCustomerInfo(false)
+                          showToast('Đã cập nhật thông tin khách hàng')
+                          window.scrollTo({ top: 0, behavior: 'smooth' })
+                        } catch(e) {
+                          showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
+                        }
+                      }}
+                      className="flex-1 px-4 py-2 rounded text-white bg-green-600 hover:bg-green-700 font-medium"
+                    >
+                      💾 Lưu thay đổi
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditingCustomerInfo(false)
+                        loadOrders(token).then(() => {
+                          const original = orders.find(o => o.id === selectedOrder.id)
+                          if (original) setSelectedOrder(original)
+                        })
+                      }}
+                      className="px-4 py-2 rounded text-white bg-gray-500 hover:bg-gray-600"
+                    >
+                      Hủy
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-6 mb-6">
+                  <div className="bg-gradient-to-br from-slate-50 to-white border border-gray-100 shadow-sm p-5 rounded-xl">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-10 w-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-lg">👤</div>
+                      <h4 className="font-semibold text-gray-800 text-lg">Thông tin khách</h4>
+                    </div>
+                    <div className="space-y-1 text-gray-700">
+                      <p><span className="font-semibold">Tên:</span> {selectedOrder.customer_name}</p>
+                      <p><span className="font-semibold">SĐT:</span> {selectedOrder.customer_phone}</p>
+                      <p><span className="font-semibold">Địa chỉ:</span> {selectedOrder.customer_address}</p>
+                      <p className="text-sm text-gray-500">{new Date(selectedOrder.createdAt).toLocaleString('vi-VN')}</p>
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-orange-50 to-white border border-orange-100 shadow-sm p-5 rounded-xl">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-10 w-10 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-lg">💳</div>
+                      <h4 className="font-semibold text-gray-800 text-lg">Thanh toán</h4>
+                    </div>
+                    <div className="space-y-1 text-gray-700">
+                      <p><span className="font-semibold">Phương thức:</span> {selectedOrder.method === 'BANK' ? 'Chuyển khoản' : 'COD'}</p>
+                      <p><span className="font-semibold">Tạm tính:</span> {(selectedOrder.subtotal || 0).toLocaleString()}₫</p>
+                      <p><span className="font-semibold">Vận chuyển:</span> {(selectedOrder.shipping || 0).toLocaleString()}₫</p>
+                      {Number(selectedOrder.discount) > 0 && (
+                        <p><span className="font-semibold">Giảm:</span> {Number(selectedOrder.discount).toLocaleString()}₫</p>
+                      )}
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-orange-100 flex items-center justify-between">
+                      <span className="font-semibold text-gray-700">Tổng:</span>
+                      <span className="text-2xl font-bold text-orange-600">{(selectedOrder.total || 0).toLocaleString()}₫</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-6">
+                <h4 className="font-semibold text-gray-800 mb-3">Danh sách sản phẩm</h4>
+                <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600 uppercase text-xs tracking-wide">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Sản phẩm</th>
+                        <th className="px-3 py-3 text-right">SL</th>
+                        <th className="px-4 py-3 text-right">Giá</th>
+                        <th className="px-4 py-3 text-right">Tổng</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {selectedOrder.items_json?.map((item, i) => (
+                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-4 py-3 font-medium text-gray-800">{item.name}</td>
+                          <td className="px-3 py-3 text-right text-gray-700">{item.qty}</td>
+                          <td className="px-4 py-3 text-right text-gray-700">{item.price?.toLocaleString()}₫</td>
+                          <td className="px-4 py-3 text-right font-semibold text-gray-900">{(item.qty * (item.price || 0)).toLocaleString()}₫</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-slate-50 text-sm">
+                      <tr>
+                        <td className="px-4 py-3 font-semibold text-gray-700" colSpan={3}>Tạm tính</td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-900">{(selectedOrder.subtotal || 0).toLocaleString()}₫</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-semibold text-gray-700" colSpan={3}>Vận chuyển</td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-900">{(selectedOrder.shipping || 0).toLocaleString()}₫</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-semibold text-gray-700" colSpan={3}>Giảm giá</td>
+                        <td className="px-4 py-3 text-right font-semibold text-red-600">-{(selectedOrder.discount || 0).toLocaleString()}₫</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-bold text-gray-900" colSpan={3}>Tổng cộng</td>
+                        <td className="px-4 py-3 text-right font-bold text-orange-600 text-lg">{(selectedOrder.total || 0).toLocaleString()}₫</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              {isEditingOrder ? (
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
+                  <h4 className="font-semibold text-lg mb-4 text-blue-900">✏️ Sửa Hóa Đơn</h4>
+                  
+                  <div className="bg-yellow-50 border border-yellow-300 rounded p-3 mb-4 text-sm">
+                    <p className="font-medium text-yellow-800">⚠️ Lưu ý:</p>
+                    <p className="text-gray-700">Chỉnh sửa toàn bộ hóa đơn (sản phẩm, vận chuyển, giảm giá, thông tin khách). Bấm lưu để cập nhật ngay ở phần chi tiết.</p>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Tên khách</label>
+                      <input
+                        className="w-full p-2 border rounded"
+                        value={invoiceInfo.customer_name}
+                        onChange={e => setEditInvoiceInfo(prev => ({ ...(prev || invoiceInfo), customer_name: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">SĐT</label>
+                      <input
+                        className="w-full p-2 border rounded"
+                        value={invoiceInfo.customer_phone}
+                        onChange={e => setEditInvoiceInfo(prev => ({ ...(prev || invoiceInfo), customer_phone: e.target.value }))}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Địa chỉ</label>
+                      <input
+                        className="w-full p-2 border rounded"
+                        value={invoiceInfo.customer_address}
+                        onChange={e => setEditInvoiceInfo(prev => ({ ...(prev || invoiceInfo), customer_address: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-3 gap-4 mb-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phương thức</label>
+                      <select
+                        className="w-full p-2 border rounded"
+                        value={invoiceInfo.method || 'COD'}
+                        onChange={e => setEditInvoiceInfo(prev => ({ ...(prev || invoiceInfo), method: e.target.value }))}
+                      >
+                        <option value="COD">COD</option>
+                        <option value="BANK">Chuyển khoản</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Vận chuyển (₫)</label>
+                      <input
+                        type="number"
+                        className="w-full p-2 border rounded"
+                        value={invoiceInfo.shipping}
+                        onChange={e => setEditInvoiceInfo(prev => ({ ...(prev || invoiceInfo), shipping: Number(e.target.value) || 0 }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Giảm giá (₫)</label>
+                      <input
+                        type="number"
+                        className="w-full p-2 border rounded"
+                        value={invoiceInfo.discount}
+                        onChange={e => setEditInvoiceInfo(prev => ({ ...(prev || invoiceInfo), discount: Number(e.target.value) || 0 }))}
+                      />
+                    </div>
+                  </div>
 
                   <div className="mb-4">
                     <div className="flex justify-between items-center mb-2">
@@ -1293,16 +1556,47 @@ export default function Admin(){
                       {editOrderItems.map((item, idx) => (
                         <div key={idx} className="grid grid-cols-12 gap-2 bg-white p-2 rounded border">
                           <div className="col-span-5">
-                            <input
-                              placeholder="Tên sản phẩm"
+                            <select
                               className="w-full p-1 text-sm border rounded"
-                              value={item.name}
+                              value={item.id || ''}
                               onChange={e => {
                                 const next = [...editOrderItems]
-                                next[idx].name = e.target.value
+                                if (e.target.value === 'custom') {
+                                  next[idx] = { id: '', name: '', price: 0, qty: item.qty }
+                                } else if (e.target.value) {
+                                  const product = products.find(p => p.id == e.target.value)
+                                  if (product) {
+                                    next[idx] = { 
+                                      id: product.id, 
+                                      name: product.name, 
+                                      price: product.promo_price || product.price, 
+                                      qty: item.qty 
+                                    }
+                                  }
+                                }
                                 setEditOrderItems(next)
                               }}
-                            />
+                            >
+                              <option value="">-- Chọn sản phẩm --</option>
+                              {products.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name} - {(p.promo_price || p.price).toLocaleString()}₫
+                                </option>
+                              ))}
+                              <option value="custom">✏️ Nhập tên khác</option>
+                            </select>
+                            {!item.id && (
+                              <input
+                                placeholder="Tên sản phẩm"
+                                className="w-full p-1 text-sm border rounded mt-1"
+                                value={item.name}
+                                onChange={e => {
+                                  const next = [...editOrderItems]
+                                  next[idx].name = e.target.value
+                                  setEditOrderItems(next)
+                                }}
+                              />
+                            )}
                           </div>
                           <div className="col-span-2">
                             <input
@@ -1351,15 +1645,15 @@ export default function Admin(){
                     </div>
                     <div className="flex justify-between text-sm">
                       <span>Vận chuyển:</span>
-                      <span className="font-medium">{(selectedOrder.shipping || 0).toLocaleString()}₫</span>
+                      <span className="font-medium">{(invoiceInfo.shipping || 0).toLocaleString()}₫</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span>Giảm giá:</span>
-                      <span className="font-medium">-{(selectedOrder.discount || 0).toLocaleString()}₫</span>
+                      <span className="font-medium">-{(invoiceInfo.discount || 0).toLocaleString()}₫</span>
                     </div>
                     <div className="flex justify-between text-lg font-bold text-orange-600 mt-2 pt-2 border-t">
                       <span>Tổng cộng:</span>
-                      <span>{(editOrderItems.reduce((sum, item) => sum + (item.price * item.qty), 0) + (selectedOrder.shipping || 0) - (selectedOrder.discount || 0)).toLocaleString()}₫</span>
+                      <span>{(editOrderItems.reduce((sum, item) => sum + (item.price * item.qty), 0) + (invoiceInfo.shipping || 0) - (invoiceInfo.discount || 0)).toLocaleString()}₫</span>
                     </div>
                   </div>
 
@@ -1367,27 +1661,33 @@ export default function Admin(){
                     <button
                       onClick={async () => {
                         try {
-                          const subtotal = editOrderItems.reduce((sum, item) => sum + (item.price * item.qty), 0)
-                          const total = subtotal + (selectedOrder.shipping || 0) - (selectedOrder.discount || 0)
+                          const normalizedItems = mergeSimilarItems(editOrderItems)
+                          setEditOrderItems(normalizedItems)
+                          const subtotal = normalizedItems.reduce((sum, item) => sum + (item.price * item.qty), 0)
+                          const shipping = Number(invoiceInfo.shipping) || 0
+                          const discount = Number(invoiceInfo.discount) || 0
+                          const total = subtotal + shipping - discount
                           const payload = {
-                            customer_name: selectedOrder.customer_name,
-                            customer_phone: selectedOrder.customer_phone,
-                            customer_address: selectedOrder.customer_address,
-                            method: selectedOrder.method,
-                            items_json: editOrderItems,
+                            customer_name: invoiceInfo.customer_name,
+                            customer_phone: invoiceInfo.customer_phone,
+                            customer_address: invoiceInfo.customer_address,
+                            method: invoiceInfo.method,
+                            items_json: normalizedItems,
                             subtotal,
-                            shipping: selectedOrder.shipping || 0,
-                            discount: selectedOrder.discount || 0,
+                            shipping,
+                            discount,
                             total,
                             paid: selectedOrder.paid,
                             status: selectedOrder.status || 'undelivered'
                           }
                           await Api.adminUpdateOrder(token, selectedOrder.id, payload)
-                          await loadOrders(token)
-                          const updated = orders.find(o => o.id === selectedOrder.id) || selectedOrder
-                          setSelectedOrder({...updated, items_json: editOrderItems})
+                          setOrders(prev => prev.map(o => o.id === selectedOrder.id ? { ...o, ...payload } : o))
+                          setSelectedOrder({
+                            ...selectedOrder,
+                            ...payload
+                          })
                           setIsEditingOrder(false)
-                          showToast('Đã cập nhật đơn hàng')
+                          showToast('Đã cập nhật hóa đơn')
                           window.scrollTo({ top: 0, behavior: 'smooth' })
                         } catch(e) {
                           showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
@@ -1400,7 +1700,15 @@ export default function Admin(){
                     <button
                       onClick={() => {
                         setIsEditingOrder(false)
-                        setEditOrderItems(selectedOrder.items_json || [])
+                        setEditOrderItems(mergeSimilarItems(selectedOrder.items_json || []))
+                        setEditInvoiceInfo({
+                          customer_name: selectedOrder.customer_name || '',
+                          customer_phone: selectedOrder.customer_phone || '',
+                          customer_address: selectedOrder.customer_address || '',
+                          method: selectedOrder.method || 'COD',
+                          shipping: Number(selectedOrder.shipping) || 0,
+                          discount: Number(selectedOrder.discount) || 0
+                        })
                       }}
                       className="px-4 py-2 rounded text-white bg-gray-500 hover:bg-gray-600"
                     >
@@ -1410,44 +1718,111 @@ export default function Admin(){
                 </div>
               ) : null}
 
-              <div className="flex gap-2 flex-wrap">
+              <div className="grid md:grid-cols-4 gap-3 mb-3">
                 <button
                   onClick={() => {
                     setIsEditingOrder(true)
-                    setEditOrderItems(selectedOrder.items_json || [])
+                    setEditOrderItems(mergeSimilarItems(selectedOrder.items_json || []))
+                    setEditInvoiceInfo({
+                      customer_name: selectedOrder.customer_name || '',
+                      customer_phone: selectedOrder.customer_phone || '',
+                      customer_address: selectedOrder.customer_address || '',
+                      method: selectedOrder.method || 'COD',
+                      shipping: Number(selectedOrder.shipping) || 0,
+                      discount: Number(selectedOrder.discount) || 0
+                    })
                   }}
-                  className="px-4 py-2 rounded text-white bg-orange-600 hover:bg-orange-700 font-medium"
+                  className="w-full px-4 py-2.5 rounded-lg text-white bg-gradient-to-r from-orange-500 to-orange-600 hover:to-orange-700 font-semibold shadow"
                 >
-                  ✏️ Chỉnh Sửa Đơn Hàng
+                  🧾 Sửa Hóa Đơn
                 </button>
                 <Link 
                   to={`/invoice/${selectedOrder.id}`}
                   target="_blank"
-                  className="px-4 py-2 rounded text-white bg-blue-600 hover:bg-blue-700"
+                  className="w-full px-4 py-2.5 rounded-lg text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:to-blue-700 font-semibold shadow text-center"
                 >
                   📄 Xem Hóa Đơn
                 </Link>
-                <button 
-                  onClick={async () => {
-                    await toggleOrderPaid(selectedOrder)
-                    window.scrollTo({ top: 0, behavior: 'smooth' })
-                  }}
-                  className={`px-4 py-2 rounded text-white ${selectedOrder.paid ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}
-                >
-                  {selectedOrder.paid ? '❌ Chưa TT' : '✅ Đã TT'}
-                </button>
                 <button 
                   onClick={() => {
                     setNewStatus(selectedOrder.status || 'undelivered')
                     setIsUpdatingStatus(true)
                   }}
-                  className="px-4 py-2 rounded text-white bg-purple-600 hover:bg-purple-700 font-medium"
+                  className="w-full px-4 py-2.5 rounded-lg text-white bg-gradient-to-r from-purple-500 to-purple-600 hover:to-purple-700 font-semibold shadow"
                 >
                   📋 Cập Nhật Trạng Thái
                 </button>
                 <button 
+                  onClick={async () => {
+                    await toggleOrderPaid(selectedOrder)
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  }}
+                  className={`w-full px-4 py-2.5 rounded-lg text-white font-semibold shadow ${selectedOrder.paid ? 'bg-gradient-to-r from-red-500 to-red-600 hover:to-red-700' : 'bg-gradient-to-r from-green-500 to-green-600 hover:to-green-700'}`}
+                >
+                  {selectedOrder.paid ? '❌ Chưa thanh toán' : '✅ Đã thanh toán'}
+                </button>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-3">
+                <button
+                  onClick={() => {
+                    const invoiceUrl = `${window.location.origin}/invoice/${selectedOrder.id}`
+                    window.open(invoiceUrl, '_blank')
+                    setTimeout(() => {
+                      const printWindow = window.open(invoiceUrl, '_blank')
+                      if (printWindow) {
+                        printWindow.onload = () => {
+                          setTimeout(() => printWindow.print(), 500)
+                        }
+                      }
+                    }, 100)
+                  }}
+                  className="w-full px-4 py-2.5 rounded-lg text-white bg-gradient-to-r from-indigo-500 to-indigo-600 hover:to-indigo-700 font-semibold shadow"
+                >
+                  🖨️ In Hóa Đơn
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const invoiceUrl = `${window.location.origin}/invoice/${selectedOrder.id}`
+                      const newWindow = window.open(invoiceUrl, '_blank')
+                      if (!newWindow) {
+                        showToast('Vui lòng cho phép popup để tải ảnh', 'error')
+                        return
+                      }
+                      await new Promise(resolve => {
+                        newWindow.onload = () => setTimeout(resolve, 1000)
+                      })
+                      const invoiceElement = newWindow.document.querySelector('.bg-white.p-8')
+                      if (!invoiceElement) {
+                        showToast('Không tìm thấy hóa đơn', 'error')
+                        newWindow.close()
+                        return
+                      }
+                      const canvas = await html2canvas(invoiceElement, {
+                        scale: 2,
+                        backgroundColor: '#ffffff',
+                        useCORS: true,
+                        ignoreElements: (element) => element.classList.contains('no-print')
+                      })
+                      const link = document.createElement('a')
+                      link.href = canvas.toDataURL('image/png')
+                      link.download = `HoaDon_${selectedOrder.id}.png`
+                      link.click()
+                      newWindow.close()
+                      showToast('Đã tải ảnh hóa đơn')
+                    } catch (err) {
+                      console.error('Lỗi khi tải ảnh:', err)
+                      showToast('Không thể tải ảnh. Vui lòng thử lại!', 'error')
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 rounded-lg text-white bg-gradient-to-r from-pink-500 to-pink-600 hover:to-pink-700 font-semibold shadow"
+                >
+                  📸 Tải Ảnh
+                </button>
+                <button 
                   onClick={() => deleteOrder(selectedOrder.id)}
-                  className="px-4 py-2 rounded text-white bg-red-600 hover:bg-red-700"
+                  className="w-full px-4 py-2.5 rounded-lg text-white bg-gradient-to-r from-gray-700 to-gray-800 hover:to-black font-semibold shadow"
                 >
                   🗑️ Xóa
                 </button>
@@ -1518,10 +1893,16 @@ export default function Admin(){
                               onClick={async () => {
                                 try {
                                   const fullOrder = await Api.adminGetOrder(token, o.id)
-                                  setSelectedOrder(fullOrder)
+                                  setSelectedOrder({
+                                    ...fullOrder,
+                                    items_json: mergeSimilarItems(fullOrder.items_json || [])
+                                  })
                                 } catch(e) {
                                   console.error('Error loading order:', e)
-                                  setSelectedOrder(o)
+                                  setSelectedOrder({
+                                    ...o,
+                                    items_json: mergeSimilarItems(o.items_json || [])
+                                  })
                                 }
                               }}
                               className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"

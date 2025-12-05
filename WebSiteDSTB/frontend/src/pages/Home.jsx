@@ -2,8 +2,10 @@ import React, { useEffect, useState, useRef } from 'react'
 import Api from '../services/api'
 import { Link } from 'react-router-dom'
 
+const normalizeText = (str) => (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
 // Helper component for product card
-function ProductCard({ product, showSoldCount = true }) {
+export function ProductCard({ product, showSoldCount = true }) {
   // Calculate discount: price is original price, promo_price is discounted price
   const oldPrice = product.price
   const salePrice = product.promo_price || product.price
@@ -72,6 +74,10 @@ export default function Home()
     { title: 'Sản phẩm chất lượng', subtitle: 'Rau rừng - Thịt gác bếp - Rượu vùng cao', image: '/images/bg-2.jpg' },
     { title: 'Ưu đãi mỗi ngày', subtitle: 'Giảm giá, combo & quà tặng', image: '/images/bg-3.jpg' }
   ]
+  const tetCategoryName = 'Tết Nguyên Đán'
+  const MAX_TOP = 12
+  const MAX_TET = 12
+  const MAX_PROMO = 8
   const timerRef = useRef(null)
   const categories = ['Thịt Gác Bếp', 'Thịt Nướng', 'Đồ Khô', 'Rau Rừng – Gia Vị', 'Rượu – Đồ Uống', 'Gạo']
   
@@ -79,22 +85,23 @@ export default function Home()
     Api.products().then(allProducts => {
       setItems(allProducts)
       
-      // Top Selling - sorted by sold_count DESC, top 10
+      // Top Selling - sorted by sold_count DESC
       const sorted = [...allProducts].sort((a, b) => (b.sold_count || 0) - (a.sold_count || 0))
-      setTopSelling(sorted.slice(0, 10))
-      
-      // Hot Promo - calculate discount % (promo_price is original, price is sale price), sort DESC, top 10
+      setTopSelling(sorted.slice(0, MAX_TOP))
+
+      // Hot Promo - promo_price is discounted price
       const promoSorted = [...allProducts]
-        .filter(p => p.promo_price && p.promo_price > p.price)
+        .filter(p => p.promo_price && p.promo_price < p.price)
         .map(p => ({
           ...p,
-          _discount: Math.round((p.promo_price - p.price) / p.promo_price * 100)
+          _discount: Math.round((p.price - p.promo_price) / p.price * 100)
         }))
         .sort((a, b) => b._discount - a._discount)
-      setHotPromo(promoSorted.slice(0, 10))
-      
-      // Tet products (first 12)
-      setTetProducts(allProducts.slice(0, 12))
+      setHotPromo(promoSorted.slice(0, MAX_PROMO))
+
+      // Tet products (category contains "tet")
+      const tetList = allProducts.filter(p => normalizeText(p.category).includes('tet'))
+      setTetProducts(tetList.slice(0, MAX_TET))
       
       // Group by categories
       const grouped = {}
@@ -114,19 +121,15 @@ export default function Home()
   
   return (
     <div>
-      <section className="hero w-full h-48 md:h-60 lg:h-80 mb-8">
+      <section className="hero w-full h-72 md:h-96 lg:h-[38rem] mb-12">
         <div className="hero-slider relative w-full h-full overflow-hidden rounded-b-2xl">
           {slides.map((s, i)=> (
             <div key={i} className={"hero-slide absolute inset-0 transition-opacity duration-1000 " + (i===slide ? 'opacity-100 z-10' : 'opacity-0 z-0')}>
               <img src={s.image} alt={s.title} className="hero-image absolute inset-0 w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/40 to-transparent"></div>
-              <div className="absolute inset-0 flex items-center justify-start pl-14 md:pl-20 lg:pl-24 pr-14 md:pr-20">
-                <div className="max-w-md animate-fade-in">
-                  <h1 className="text-xl md:text-2xl lg:text-3xl text-white font-extrabold drop-shadow-2xl mb-1 md:mb-2">{s.title}</h1>
-                  <p className="text-xs md:text-sm lg:text-base text-white font-semibold drop-shadow-lg mb-2 md:mb-3">{s.subtitle}</p>
-                  <button className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-4 md:px-5 py-1.5 md:py-2 rounded-full font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 text-xs md:text-sm whitespace-nowrap">
-                    Xem thêm →
-                  </button>
+              <div className="absolute inset-0 flex items-center justify-start pl-8 md:pl-16 lg:pl-24">
+                <div className="max-w-2xl animate-fade-in">
+                  <h1 className="text-4xl md:text-6xl lg:text-7xl font-black leading-tight mb-3 text-white drop-shadow-[0_6px_20px_rgba(0,0,0,0.7)]">{s.title}</h1>
+                  <p className="text-xl md:text-3xl lg:text-3xl font-bold leading-relaxed text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.6)]">{s.subtitle}</p>
                 </div>
               </div>
             </div>
@@ -169,38 +172,25 @@ export default function Home()
         </div>
       </section>
 
-      {/* Top Selling Products */}
-      <div className="container mx-auto p-4 mt-32 md:mt-44 lg:mt-56">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-3">
-            <span className="text-3xl">🔥</span>
-            Sản phẩm bán chạy nhất
-          </h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-          {topSelling.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
-        </div>
-      </div>
+      {/* Category Showcase - removed from top, will be at bottom */}
 
       {/* Hot Promotions */}
       {hotPromo.length > 0 && (
-        <section className="py-16 bg-gradient-to-r from-red-50 to-pink-50">
-          <div className="container mx-auto px-4">
-            <div className="flex items-center justify-between mb-10">
-              <h2 className="text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-3">
-                <span className="text-4xl">💥</span>
-                Khuyến Mãi HOT
-              </h2>
-              <Link to="/category/all" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
-                Xem tất cả
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </Link>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-              {hotPromo.map(p => <ProductCard key={p.id} product={p} showSoldCount={false} />)}
-            </div>
+        <section className="container mx-auto px-4 py-12">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-3">
+              <span className="text-3xl">💥</span>
+              Danh mục sản phẩm khuyến mãi HOT
+            </h2>
+            <Link to="/promo" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
+              Xem tất cả
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {hotPromo.map(p => <ProductCard key={p.id} product={p} showSoldCount={false} />)}
           </div>
         </section>
       )}
@@ -213,18 +203,35 @@ export default function Home()
               <span className="text-4xl">🎊</span>
               Sản Phẩm Phục Vụ Tết Nguyên Đán
             </h2>
-            <Link to="/category/all" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
+            <Link to={`/category/${tetCategoryName}`} className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
               Xem tất cả
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </Link>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {tetProducts.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
-          </div>
+          {tetProducts.length === 0 ? (
+            <div className="text-center py-10 text-gray-600">Chưa có sản phẩm Tết được gắn nhãn.</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {tetProducts.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
+            </div>
+          )}
         </div>
       </section>
+
+      {/* Top Selling Products */}
+      <div className="container mx-auto p-4 pt-16">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-3">
+            <span className="text-3xl">🔥</span>
+            Sản phẩm bán chạy nhất
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+          {topSelling.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
+        </div>
+      </div>
 
       {/* Category Sections */}
       {categories.map((cat, idx) => (
@@ -282,7 +289,7 @@ export default function Home()
         </div>
       </section>
 
-      {/* Category Showcase */}
+      {/* Category Showcase - at bottom */}
       <section className="py-16 bg-white">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-10">

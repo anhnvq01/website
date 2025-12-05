@@ -12,6 +12,7 @@ import Invoice from './pages/Invoice'
 import Admin from './pages/Admin'
 import Info from './pages/Info'
 import Search from './pages/Search'
+import Promo from './pages/Promo'
 
 function SearchBox() {
   const [query, setQuery] = useState('')
@@ -145,21 +146,16 @@ function App(){
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [categories, setCategories] = useState([])
 
-  // Check if user is logged in
+  // Track if token exists (don't auto-logout, let Admin page handle auth)
   useEffect(() => {
-    const checkAuth = () => {
+    const checkToken = () => {
       const token = localStorage.getItem('admin_token')
       setIsLoggedIn(!!token)
     }
-    checkAuth()
-    // Listen for storage changes to update login state
-    window.addEventListener('storage', checkAuth)
-    // Check periodically for login state changes
-    const interval = setInterval(checkAuth, 1000)
-    return () => {
-      window.removeEventListener('storage', checkAuth)
-      clearInterval(interval)
-    }
+    checkToken()
+    const onStorage = () => checkToken()
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
   }, [])
 
   // Load categories from API
@@ -167,7 +163,7 @@ function App(){
     Api.categories().then(cats => {
       const categoryList = cats.map(c => c.category)
       // Custom sort order
-      const order = ['Thịt Gác Bếp', 'Thịt nướng', 'Đồ Khô', 'Gạo', 'Rau Rừng – Gia Vị', 'Rượu – Đồ Uống']
+      const order = ['Tết Nguyên Đán', 'Thịt Gác Bếp', 'Thịt nướng', 'Đồ Khô', 'Gạo', 'Rau Rừng – Gia Vị', 'Rượu – Đồ Uống']
       categoryList.sort((a, b) => {
         const indexA = order.indexOf(a)
         const indexB = order.indexOf(b)
@@ -183,6 +179,7 @@ function App(){
   function handleLogout() {
     localStorage.removeItem('admin_token')
     setIsLoggedIn(false)
+    window.dispatchEvent(new Event('storage'))
     window.location.href = '/'
   }
 
@@ -224,10 +221,8 @@ function App(){
                 📞 098.994.8583
               </a>
               <a href="#" className="hidden md:inline hover:scale-105 transition-transform">Facebook</a>
-              {isLoggedIn ? (
-                <button onClick={handleLogout} className="hidden md:inline hover:underline hover:scale-105 transition-transform">Đăng xuất</button>
-              ) : (
-                <Link to="/admin" className="hidden md:inline hover:scale-105 transition-transform">Đăng nhập</Link>
+              {isLoggedIn && (
+                <button onClick={handleLogout} className="inline hover:underline hover:scale-105 transition-transform font-semibold">Đăng xuất</button>
               )}
             </div>
           </div>
@@ -246,7 +241,7 @@ function App(){
                 <nav className="hidden lg:flex gap-4 xl:gap-6 items-center">
                   <Link to="/" className="nav-link whitespace-nowrap">Trang Chủ</Link>
                   <Link to="/info" className="nav-link whitespace-nowrap">Giới Thiệu</Link>
-                  <Link to="#" className="nav-link whitespace-nowrap">Khuyến mãi HOT</Link>
+                  <Link to="/promo" className="nav-link whitespace-nowrap">Khuyến mãi HOT</Link>
                   <div className="relative group">
                     <button className="nav-link flex items-center gap-1 whitespace-nowrap">
                       Sản phẩm
@@ -269,11 +264,9 @@ function App(){
                 <div className="hidden lg:block w-64">
                   <SearchBox />
                 </div>
-                {isLoggedIn && (
-                  <Link to="/admin" className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-full hover:from-green-700 hover:to-green-800 shadow-md hover:shadow-lg transition-all text-sm" title="Quản trị">
-                    ⚙️ <span className="font-semibold hidden sm:inline">Admin</span>
-                  </Link>
-                )}
+                <Link to="/admin" className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-full hover:from-green-700 hover:to-green-800 shadow-md hover:shadow-lg transition-all text-sm" title="Quản trị">
+                  ⚙️ <span className="font-semibold hidden sm:inline">Admin</span>
+                </Link>
                 <CartIcon />
               </div>
             </div>
@@ -284,7 +277,7 @@ function App(){
               <div className="px-4 py-3">
                 <Link to="/" className="block py-2 border-b" onClick={()=>setMobileOpen(false)}>Trang Chủ</Link>
                 <Link to="/info" className="block py-2 border-b" onClick={()=>setMobileOpen(false)}>Giới Thiệu</Link>
-                <Link to="#" className="block py-2 border-b" onClick={()=>setMobileOpen(false)}>Khuyến mãi HOT</Link>
+                <Link to="/promo" className="block py-2 border-b" onClick={()=>setMobileOpen(false)}>Khuyến mãi HOT</Link>
                 <div className="py-2 border-b">
                   <button 
                     className="w-full text-left font-semibold text-gray-700 flex items-center justify-between"
@@ -303,15 +296,27 @@ function App(){
                     ))}
                   </div>
                 </div>
-                {isLoggedIn ? (
-                  <>
-                    <Link to="/admin" className="block py-2 border-b text-green-700 font-semibold" onClick={()=>setMobileOpen(false)}>
-                      ⚙️ Trang quản trị
-                    </Link>
-                    <button onClick={() => { handleLogout(); setMobileOpen(false); }} className="block w-full text-left py-2 border-b text-gray-700">Đăng xuất</button>
-                  </>
-                ) : (
-                  <Link to="/admin" className="block py-2 border-b" onClick={()=>setMobileOpen(false)}>Đăng nhập</Link>
+                <Link to="/admin" className="block py-2 border-b text-green-700 font-semibold" onClick={()=>setMobileOpen(false)}>
+                  ⚙️ Trang quản trị
+                </Link>
+                {!isLoggedIn && (
+                  <Link 
+                    to="/admin" 
+                    className="block py-2 text-left text-blue-600 font-semibold" 
+                    onClick={()=>setMobileOpen(false)}
+                  >
+                    🔑 Đăng nhập
+                  </Link>
+                )}
+                {isLoggedIn && (
+                  <div className="pt-2">
+                    <button 
+                      onClick={() => { handleLogout(); setMobileOpen(false); }} 
+                      className="w-full text-left px-3 py-2 rounded-lg bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold shadow hover:from-red-600 hover:to-red-700"
+                    >
+                      ↩️ Đăng xuất
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -333,6 +338,7 @@ function App(){
               <Route path="/invoice/:id" element={<Invoice/>} />
               <Route path="/admin" element={<Admin/>} />
               <Route path="/info" element={<Info/>} />
+              <Route path="/promo" element={<Promo/>} />
               <Route path="/search" element={<Search/>} />
             </Routes>
           </PageWrapper>
