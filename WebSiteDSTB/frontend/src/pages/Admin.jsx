@@ -181,6 +181,27 @@ export default function Admin(){
     }
   }
 
+  // Download database backup
+  async function downloadDatabase() {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
+      const response = await fetch(`${apiUrl}/download-db`)
+      if (!response.ok) throw new Error('Tải xuống thất bại')
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `taybac-backup-${new Date().toISOString().slice(0, 10)}.db`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      showToast('Tải xuống CSDL thành công', 'success')
+    } catch (e) {
+      showToast('Lỗi tải xuống: ' + e.message, 'error')
+    }
+  }
+
   async function loadProducts(tk) {
     try {
       const data = await Api.adminGetProducts(tk)
@@ -700,6 +721,13 @@ export default function Admin(){
           className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'categories' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
         >
           🏷️ Danh Mục
+        </button>
+        <button 
+          onClick={downloadDatabase}
+          className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap border-transparent text-gray-600 hover:text-blue-600 ml-auto`}
+          title="Tải xuống bản sao lưu cơ sở dữ liệu"
+        >
+          💾 Tải CSDL
         </button>
       </div>
 

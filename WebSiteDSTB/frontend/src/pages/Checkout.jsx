@@ -156,7 +156,8 @@ export default function Checkout(){
     localStorage.removeItem('tb_cart')
     localStorage.removeItem('tb_checkout_form')
     
-    // Show success message
+    // Show success message and scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' })
     setSuccessMessage('success')
     
     // Redirect after showing message
@@ -167,24 +168,28 @@ export default function Checkout(){
   return (
     <div className="container mx-auto p-4">
       {successMessage === 'success' && (
-        <div className="fixed z-[9999] left-2 right-2 top-20 sm:left-auto sm:right-4 sm:top-24 sm:w-auto">
-          <div className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-2xl shadow-2xl animate-slide-in-right flex items-center gap-2 sm:gap-3 border-2 border-white max-w-full sm:max-w-sm">
-            <span className="text-2xl sm:text-3xl">✓</span>
-            <div>
-              <div className="font-bold text-base sm:text-lg">Đặt hàng thành công!</div>
-              <div className="text-xs sm:text-sm">Vui lòng hoàn tất thanh toán</div>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 mx-4 max-w-md w-full text-center transform animate-scale-in">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-5xl text-green-600">✓</span>
+            </div>
+            <h3 className="text-2xl font-bold text-gray-800 mb-2">Đặt hàng thành công!</h3>
+            <p className="text-gray-600 mb-4">Cảm ơn bạn đã đặt hàng. Vui lòng hoàn tất thanh toán để chúng tôi xử lý đơn hàng.</p>
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+              <div className="animate-spin w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full"></div>
+              <span>Đang chuyển hướng...</span>
             </div>
           </div>
         </div>
       )}
       {successMessage === 'error' && (
-        <div className="fixed z-[9999] left-2 right-2 top-20 sm:left-auto sm:right-4 sm:top-24 sm:w-auto">
-          <div className="bg-gradient-to-r from-red-600 to-red-700 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-2xl shadow-2xl animate-slide-in-right flex items-center gap-2 sm:gap-3 border-2 border-white max-w-full sm:max-w-sm">
-            <span className="text-2xl sm:text-3xl">✕</span>
-            <div>
-              <div className="font-bold text-base sm:text-lg">Giỏ hàng rỗng!</div>
-              <div className="text-xs sm:text-sm">Vui lòng thêm sản phẩm trước khi đặt hàng</div>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 mx-4 max-w-md w-full text-center">
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-5xl text-red-600">✕</span>
             </div>
+            <h3 className="text-2xl font-bold text-gray-800 mb-2">Giỏ hàng rỗng!</h3>
+            <p className="text-gray-600">Vui lòng thêm sản phẩm vào giỏ hàng trước khi đặt hàng.</p>
           </div>
         </div>
       )}
@@ -240,7 +245,7 @@ export default function Checkout(){
             </div>
           )}
           
-          <label className="block text-gray-700 font-semibold mb-2 mt-4">Phương thức thanh toán <span className="text-red-600">*</span></label>
+          <label className="block text-gray-700 font-semibold mb-2 mt-4">Phương thức thanh toán</label>
           <select value={method} onChange={e=>setMethod(e.target.value)} className="w-full p-2 border rounded my-1">
             <option value="COD">COD (Thanh toán khi nhận hàng)</option>
             <option value="BANK">Chuyển khoản ngân hàng</option>
