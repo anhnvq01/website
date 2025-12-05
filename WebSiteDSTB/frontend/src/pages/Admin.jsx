@@ -42,6 +42,7 @@ export default function Admin(){
   // Product management
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
+  const [categoriesDirty, setCategoriesDirty] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [editingCategoryId, setEditingCategoryId] = useState(null)
   const [newCategoryName, setNewCategoryName] = useState('')
@@ -214,6 +215,7 @@ export default function Admin(){
     try {
       const data = await Api.adminGetCategories(tk)
       setCategories(data)
+      setCategoriesDirty(false)
     } catch(e) { 
       if (!handleAuthError(e)) {
         console.error(e)
@@ -389,6 +391,31 @@ export default function Admin(){
       if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
     }
   }
+  
+    function moveCategory(id, direction) {
+      setCategories(prev => {
+        const idx = prev.findIndex(c => c.rowid === id)
+        if (idx === -1) return prev
+        const target = direction === 'up' ? idx - 1 : idx + 1
+        if (target < 0 || target >= prev.length) return prev
+        const next = [...prev]
+        ;[next[idx], next[target]] = [next[target], next[idx]]
+        setCategoriesDirty(true)
+        return next
+      })
+    }
+  
+    async function saveCategoryOrder() {
+      if (!categoriesDirty) return
+      const order = categories.map(c => c.rowid)
+      try {
+        await Api.adminReorderCategories(token, order)
+        showToast('Đã lưu thứ tự danh mục', 'success')
+        setCategoriesDirty(false)
+      } catch (e) {
+        if (!handleAuthError(e)) showToast('Lưu thứ tự thất bại: ' + (e.response?.data?.error || e.message), 'error')
+      }
+    }
 
   async function updateCategory(id, newName) {
     if (!newName.trim()) {
@@ -1983,6 +2010,18 @@ export default function Admin(){
         <div>
           <div className="bg-white p-6 rounded shadow mb-6">
             <h2 className="text-2xl font-bold mb-4">Quản Lý Danh Mục</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-gray-600">
+                Kéo/sắp xếp danh mục bằng nút ⬆️⬇️, sau đó nhấn "Lưu thứ tự" để áp dụng cho menu và trang chủ.
+              </div>
+              <button
+                onClick={saveCategoryOrder}
+                disabled={!categoriesDirty}
+                className={`px-4 py-2 rounded font-semibold shadow ${categoriesDirty ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+              >
+                💾 Lưu thứ tự
+              </button>
+            </div>
             <div className="flex gap-2 mb-6">
               <input 
                 type="text" 
@@ -2014,7 +2053,7 @@ export default function Admin(){
                     </tr>
                   </thead>
                   <tbody>
-                    {categories.map(cat => (
+                    {categories.map((cat, idx) => (
                       <tr key={cat.rowid} className="border-b hover:bg-gray-50">
                         <td className="px-4 py-2">
                           {editingCategoryId === cat.rowid ? (
@@ -2034,6 +2073,20 @@ export default function Admin(){
                           )}
                         </td>
                         <td className="px-4 py-2 text-center space-x-2">
+                          <button 
+                            onClick={() => moveCategory(cat.rowid, 'up')}
+                            disabled={idx === 0}
+                            className={`px-2 py-1 rounded text-sm ${idx === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                          >
+                            ⬆️
+                          </button>
+                          <button 
+                            onClick={() => moveCategory(cat.rowid, 'down')}
+                            disabled={idx === categories.length - 1}
+                            className={`px-2 py-1 rounded text-sm ${idx === categories.length - 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                          >
+                            ⬇️
+                          </button>
                           <button 
                             onClick={() => setEditingCategoryId(cat.rowid)}
                             className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"

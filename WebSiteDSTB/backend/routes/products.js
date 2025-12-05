@@ -34,7 +34,7 @@ router.get('/', (req, res) => {
 
 // Public endpoint to get all categories
 router.get('/categories', (req, res) => {
-  const rows = db.prepare('SELECT * FROM categories ORDER BY category').all();
+  const rows = db.prepare('SELECT rowid, category, sort_order FROM categories ORDER BY COALESCE(sort_order, rowid)').all();
   res.json(rows);
 });
 

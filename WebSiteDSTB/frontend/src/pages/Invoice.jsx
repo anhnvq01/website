@@ -171,7 +171,7 @@ export default function Invoice(){
                 {copied && (
                   <div className="text-xs text-green-700 font-semibold animate-pulse">Đã copy mã đơn, dán vào nội dung chuyển khoản.</div>
                 )}
-                <p>Sau khi thanh toán, vui lòng báo lại để xác nhận.</p>
+                <p>Sau khi thanh toán thành công, chúng tôi sẽ gửi tin nhắn xác nhận tới số điện thoại đã đăng ký của bạn.</p>
               </div>
             </div>
           </div>

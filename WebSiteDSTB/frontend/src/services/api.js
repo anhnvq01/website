@@ -50,5 +50,6 @@ export default {
   adminGetCategories: (token) => API.get('/admin/categories', { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
   adminAddCategory: (token, category) => API.post('/admin/categories', { category }, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
   adminUpdateCategory: (token, id, category) => API.put(`/admin/categories/${id}`, { category }, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
-  adminDeleteCategory: (token, id) => API.delete(`/admin/categories/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data)
+  adminDeleteCategory: (token, id) => API.delete(`/admin/categories/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminReorderCategories: (token, order) => API.post('/admin/categories/reorder', { order }, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data)
 }
