@@ -58,6 +58,12 @@ app.locals.upload = upload;
 // Serve static files from frontend/public
 app.use(express.static(path.join(__dirname, '../frontend/public')));
 
+// Download database backup (must be before /api routes)
+app.get('/api/download-db', (req, res) => {
+  const dbPath = path.join(__dirname, 'taybac.db');
+  res.download(dbPath, 'taybac.db');
+});
+
 // API
 app.use('/api/products', products);
 app.use('/api/orders', orders);
