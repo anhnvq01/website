@@ -5,8 +5,8 @@ import html2canvas from 'html2canvas'
 
 export default function Admin(){
   const [step, setStep] = useState('login') // login, dashboard, products, orders, add-product, edit-product
-  const [user, setUser] = useState('admin')
-  const [pass, setPass] = useState('password123')
+  const [user, setUser] = useState('')
+  const [pass, setPass] = useState('')
   const [token, setToken] = useState('')
   const toastTimer = useRef(null)
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' })
@@ -19,6 +19,7 @@ export default function Admin(){
   }
 
   const showConfirm = (message, onConfirm) => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
     setConfirmDialog({ visible: true, message, onConfirm })
   }
 
@@ -26,6 +27,18 @@ export default function Admin(){
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current)
     }
+  }, [])
+
+  // Prevent scroll from changing number inputs
+  useEffect(() => {
+    const preventNumberScroll = (e) => {
+      if (e.target.type === 'number') {
+        e.target.blur()
+        setTimeout(() => e.target.focus(), 0)
+      }
+    }
+    document.addEventListener('wheel', preventNumberScroll, { passive: false })
+    return () => document.removeEventListener('wheel', preventNumberScroll)
   }, [])
 
   // Load token from localStorage on mount
@@ -46,6 +59,7 @@ export default function Admin(){
   const [editingId, setEditingId] = useState(null)
   const [editingCategoryId, setEditingCategoryId] = useState(null)
   const [newCategoryName, setNewCategoryName] = useState('')
+  const [filterCategory, setFilterCategory] = useState('all')
   const [productForm, setProductForm] = useState({
     name: '',
     price: 0,
@@ -57,7 +71,8 @@ export default function Admin(){
     promo_price: null,
     sold_count: 0,
     import_price: 0,
-    is_tet: false
+    is_tet: false,
+    can_ship_province: true
   })
   const [imagePreview, setImagePreview] = useState('https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm')
   const [gallery, setGallery] = useState([])
@@ -76,6 +91,9 @@ export default function Admin(){
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [newStatus, setNewStatus] = useState('')
   const [stats, setStats] = useState({})
+  const [filterOrderStatus, setFilterOrderStatus] = useState('all')
+  const [filterOrderDate, setFilterOrderDate] = useState('')
+  const [filterSeller, setFilterSeller] = useState('all')
   const [orderForm, setOrderForm] = useState({
     customer_name: '',
     customer_phone: '',
@@ -83,7 +101,17 @@ export default function Admin(){
     method: 'COD',
     shipping: 30000,
     discount: 0,
-    paid: false
+    paid: false,
+    seller: 'Quang Tâm'
+  })
+
+  // Admin accounts management
+  const [admins, setAdmins] = useState([])
+  const [editingAdminId, setEditingAdminId] = useState(null)
+  const [adminForm, setAdminForm] = useState({
+    username: '',
+    password: '',
+    role: 'admin'
   })
 
   const invoiceInfo = editInvoiceInfo || {
@@ -153,7 +181,8 @@ export default function Admin(){
         loadProducts(tk),
         loadOrders(tk),
         loadStats(tk),
-        loadCategories(tk)
+        loadCategories(tk),
+        loadAdmins(tk)
       ])
     } catch (e) {
       if (e?.response?.status === 401) {
@@ -174,7 +203,8 @@ export default function Admin(){
         loadProducts(tk),
         loadOrders(tk),
         loadStats(tk),
-        loadCategories(tk)
+        loadCategories(tk),
+        loadAdmins(tk)
       ])
     } catch (e) {
       handleAuthError(e)
@@ -202,6 +232,12 @@ export default function Admin(){
     }
   }
 
+  const normalizeCanShip = (value) => {
+    // Accept numeric, boolean, or string values from backend
+    if (value === true || value === 1 || value === '1' || value === 'true') return true
+    return false
+  }
+
   async function loadProducts(tk) {
     try {
       const data = await Api.adminGetProducts(tk)
@@ -209,7 +245,8 @@ export default function Admin(){
         ...p,
         images: parseImagesField(p.images, p.image),
         import_price: Number(p.import_price || 0),
-        is_tet: !!p.is_tet
+        is_tet: !!p.is_tet,
+        can_ship_province: normalizeCanShip(p.can_ship_province)
       }))
       setProducts(normalized)
     } catch(e) { if (!handleAuthError(e)) console.error(e) }
@@ -272,11 +309,19 @@ export default function Admin(){
 
   async function saveProduct(e) {
     e.preventDefault()
+    const weightNormalized = (() => {
+      if (productForm.weight === null || productForm.weight === undefined || productForm.weight === '') return null
+      const cleaned = String(productForm.weight).replace(',', '.').replace(/[^0-9.]/g, '')
+      const num = parseFloat(cleaned)
+      return Number.isFinite(num) ? num : null
+    })()
     const payload = {
       ...productForm,
       images: gallery,
       import_price: Number(productForm.import_price) || 0,
-      is_tet: productForm.is_tet ? 1 : 0
+      is_tet: productForm.is_tet ? 1 : 0,
+      can_ship_province: productForm.can_ship_province ? 1 : 0,
+      weight: weightNormalized
     }
     if (!payload.image && gallery.length) {
       payload.image = gallery[0]
@@ -308,6 +353,7 @@ export default function Admin(){
       setEditingId(null)
       setStep('products')
       await loadProducts(token)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch(e){ if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
   }
 
@@ -335,7 +381,8 @@ export default function Admin(){
       promo_price: product.promo_price ?? null,
       sold_count: product.sold_count || 0,
       import_price: Number(product.import_price || 0),
-      is_tet: !!product.is_tet
+      is_tet: !!product.is_tet,
+      can_ship_province: normalizeCanShip(product.can_ship_province)
     })
     setGallery(parsedImages)
     setImagePreview(mainImage)
@@ -355,7 +402,8 @@ export default function Admin(){
       promo_price: null,
       sold_count: 0,
       import_price: 0,
-      is_tet: false
+      is_tet: false,
+      can_ship_province: true
     })
     setImagePreview('https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm')
     setGallery([])
@@ -572,7 +620,8 @@ export default function Admin(){
           discount: orderForm.discount,
           total,
           method: orderForm.method,
-          paid: orderForm.paid
+          paid: orderForm.paid,
+          seller: orderForm.seller || 'Quang Tâm'
         })
         showToast('Tạo đơn hàng thành công')
       }
@@ -583,13 +632,15 @@ export default function Admin(){
         method: 'COD',
         shipping: 30000,
         discount: 0,
-        paid: false
+        paid: false,
+        seller: 'Quang Tâm'
       })
       setOrderItems([])
       setEditingOrderId(null)
       setStep('orders')
       await loadOrders(token)
       await loadStats(token)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch(e) { showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
   }
 
@@ -602,10 +653,62 @@ export default function Admin(){
       method: order.method || 'COD',
       shipping: order.shipping || 0,
       discount: order.discount || 0,
-      paid: !!order.paid
+      paid: !!order.paid,
+      seller: order.seller || 'Quang Tâm'
     })
     setOrderItems(mergeSimilarItems(order.items_json || []))
     setStep('add-order')
+  }
+
+  // Admin accounts management
+  async function loadAdmins(tk) {
+    try {
+      const data = await Api.adminGetAdmins(tk)
+      setAdmins(data)
+    } catch(e) { if (!handleAuthError(e)) console.error(e) }
+  }
+
+  async function saveAdmin() {
+    try {
+      if (editingAdminId) {
+        await Api.adminUpdateAdmin(token, editingAdminId, adminForm)
+        showToast('Cập nhật tài khoản thành công')
+      } else {
+        await Api.adminCreateAdmin(token, adminForm)
+        showToast('Tạo tài khoản thành công')
+      }
+      setAdminForm({ username: '', password: '', role: 'admin' })
+      setEditingAdminId(null)
+      await loadAdmins(token)
+    } catch(e) { 
+      const errorMsg = e.response?.data?.error || e.message
+      showToast('Lỗi: ' + errorMsg, 'error') 
+    }
+  }
+
+  function startEditAdmin(admin) {
+    setEditingAdminId(admin.id)
+    setAdminForm({
+      username: admin.username,
+      password: '',
+      role: admin.role || 'admin'
+    })
+  }
+
+  function cancelEditAdmin() {
+    setEditingAdminId(null)
+    setAdminForm({ username: '', password: '', role: 'admin' })
+  }
+
+  async function deleteAdmin(id) {
+    try {
+      await Api.adminDeleteAdmin(token, id)
+      showToast('Xóa tài khoản thành công')
+      await loadAdmins(token)
+    } catch(e) {
+      const errorMsg = e.response?.data?.error || e.message
+      showToast('Lỗi: ' + errorMsg, 'error')
+    }
   }
 
   // Confirm dialog overlay
@@ -674,11 +777,11 @@ export default function Admin(){
         <form onSubmit={login}>
           <div className="mb-4">
             <label className="block text-gray-700 font-medium mb-2">Tên đăng nhập</label>
-            <input value={user} onChange={e=>setUser(e.target.value)} className="w-full p-3 text-base border rounded" placeholder="admin"/>
+            <input value={user} onChange={e=>setUser(e.target.value)} className="w-full p-3 text-base border rounded"/>
           </div>
           <div className="mb-6">
             <label className="block text-gray-700 font-medium mb-2">Mật khẩu</label>
-            <input value={pass} onChange={e=>setPass(e.target.value)} type="password" className="w-full p-3 text-base border rounded" placeholder="password123"/>
+            <input type="password" value={pass} onChange={e=>setPass(e.target.value)} className="w-full p-3 text-base border rounded"/>
           </div>
           <button className="w-full bg-green-700 text-white px-4 py-3 text-base rounded hover:bg-green-800">Đăng nhập</button>
         </form>
@@ -721,6 +824,12 @@ export default function Admin(){
           className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'categories' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
         >
           🏷️ Danh Mục
+        </button>
+        <button 
+          onClick={() => { setStep('admins'); loadAdmins(token) }}
+          className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'admins' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
+        >
+          👤 Tài Khoản
         </button>
         <button 
           onClick={downloadDatabase}
@@ -783,10 +892,10 @@ export default function Admin(){
             </div>
           </div>
 
-          {/* Revenue Chart */}
-          <div className="bg-white p-8 rounded-xl shadow-lg">
+          {/* Revenue Charts - Quang Tâm */}
+          <div className="bg-white p-8 rounded-xl shadow-lg border-t-4 border-orange-500">
             <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-              <span>💰</span> Doanh Thu & Lợi Nhuận
+              <span>👨‍💼</span> Quang Tâm - Doanh Thu & Lợi Nhuận
             </h3>
             <div className="grid lg:grid-cols-2 gap-8">
               {/* Chart */}
@@ -795,8 +904,8 @@ export default function Admin(){
                 <div className="w-full bg-gray-50 rounded-lg p-6">
                   {(() => {
                     const labels = ['Hôm nay','Tháng','Năm']
-                    const data = [stats.day?.revenue || 0, stats.month?.revenue || 0, stats.year?.revenue || 0]
-                    const profit = [stats.day?.profit || 0, stats.month?.profit || 0, stats.year?.profit || 0]
+                    const data = [stats.day?.revenueQuangTam || 0, stats.month?.revenueQuangTam || 0, stats.year?.revenueQuangTam || 0]
+                    const profit = [stats.day?.profitQuangTam || 0, stats.month?.profitQuangTam || 0, stats.year?.profitQuangTam || 0]
                     const max = Math.max(...data, ...profit, 1)
                     const chartW = 400
                     const chartH = 200
@@ -853,18 +962,105 @@ export default function Admin(){
               <div className="space-y-4">
                 <div className="bg-gradient-to-r from-orange-50 to-orange-100 p-6 rounded-lg border-l-4 border-orange-500">
                   <div className="text-xs text-orange-600 font-semibold uppercase tracking-wider mb-2">Hôm nay</div>
-                  <div className="text-2xl font-bold text-orange-700">{(stats.day?.revenue || 0).toLocaleString()}₫</div>
-                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.day?.profit || 0).toLocaleString()}₫</div>
+                  <div className="text-2xl font-bold text-orange-700">{(stats.day?.revenueQuangTam || 0).toLocaleString()}₫</div>
+                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.day?.profitQuangTam || 0).toLocaleString()}₫</div>
                 </div>
                 <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-6 rounded-lg border-l-4 border-purple-500">
                   <div className="text-xs text-purple-600 font-semibold uppercase tracking-wider mb-2">Tháng này</div>
-                  <div className="text-2xl font-bold text-purple-700">{(stats.month?.revenue || 0).toLocaleString()}₫</div>
-                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.month?.profit || 0).toLocaleString()}₫</div>
+                  <div className="text-2xl font-bold text-purple-700">{(stats.month?.revenueQuangTam || 0).toLocaleString()}₫</div>
+                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.month?.profitQuangTam || 0).toLocaleString()}₫</div>
                 </div>
                 <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg border-l-4 border-blue-500">
                   <div className="text-xs text-blue-600 font-semibold uppercase tracking-wider mb-2">Năm này</div>
-                  <div className="text-2xl font-bold text-blue-700">{(stats.year?.revenue || 0).toLocaleString()}₫</div>
-                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.year?.profit || 0).toLocaleString()}₫</div>
+                  <div className="text-2xl font-bold text-blue-700">{(stats.year?.revenueQuangTam || 0).toLocaleString()}₫</div>
+                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.year?.profitQuangTam || 0).toLocaleString()}₫</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Revenue Charts - Mẹ Hằng */}
+          <div className="bg-white p-8 rounded-xl shadow-lg border-t-4 border-pink-500">
+            <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+              <span>👩‍💼</span> Mẹ Hằng - Doanh Thu & Lợi Nhuận
+            </h3>
+            <div className="grid lg:grid-cols-2 gap-8">
+              {/* Chart */}
+              <div>
+                <div className="mb-4 text-sm text-gray-600 font-medium">Biểu đồ so sánh (VNĐ)</div>
+                <div className="w-full bg-gray-50 rounded-lg p-6">
+                  {(() => {
+                    const labels = ['Hôm nay','Tháng','Năm']
+                    const data = [stats.day?.revenueMeHang || 0, stats.month?.revenueMeHang || 0, stats.year?.revenueMeHang || 0]
+                    const profit = [stats.day?.profitMeHang || 0, stats.month?.profitMeHang || 0, stats.year?.profitMeHang || 0]
+                    const max = Math.max(...data, ...profit, 1)
+                    const chartW = 400
+                    const chartH = 200
+                    const barW = 40
+                    const gap = 30
+                    const totalW = labels.length * (barW * 2 + gap + 10)
+                    const startX = Math.max(20, (chartW - totalW) / 2)
+                    return (
+                      <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="xMidYMid meet" className="overflow-visible">
+                        {/* grid lines */}
+                        {[0.25,0.5,0.75,1].map((p,i) => (
+                          <g key={i}>
+                            <line x1="0" x2={chartW} y1={chartH - p*chartH} y2={chartH - p*chartH} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4,4" />
+                          </g>
+                        ))}
+                        {labels.map((lab, i) => {
+                          const rx = startX + i * (barW*2 + gap + 10)
+                          const revH = Math.max(5, Math.round((data[i] / max) * (chartH - 40)))
+                          const profH = Math.max(5, Math.round((profit[i] / max) * (chartH - 40)))
+                          return (
+                            <g key={i}>
+                              {/* Revenue bar */}
+                              <rect x={rx} y={chartH - revH - 30} width={barW} height={revH} fill="#ec4899" rx="4">
+                                <animate attributeName="height" from="0" to={revH} dur="0.8s" fill="freeze" />
+                                <animate attributeName="y" from={chartH - 30} to={chartH - revH - 30} dur="0.8s" fill="freeze" />
+                              </rect>
+                              {/* Profit bar */}
+                              <rect x={rx + barW + 6} y={chartH - profH - 30} width={barW} height={profH} fill="#10b981" rx="4">
+                                <animate attributeName="height" from="0" to={profH} dur="0.8s" fill="freeze" />
+                                <animate attributeName="y" from={chartH - 30} to={chartH - profH - 30} dur="0.8s" fill="freeze" />
+                              </rect>
+                              {/* Label */}
+                              <text x={rx + barW + 3} y={chartH - 10} fontSize="14" fontWeight="600" textAnchor="middle" fill="#374151">{lab}</text>
+                            </g>
+                          )
+                        })}
+                      </svg>
+                    )
+                  })()}
+                </div>
+                <div className="mt-4 flex items-center justify-center gap-6 text-sm">
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-pink-500 rounded"></span>
+                    <span className="font-medium text-gray-700">Doanh thu</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-green-500 rounded"></span>
+                    <span className="font-medium text-gray-700">Lợi nhuận</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Stats Details */}
+              <div className="space-y-4">
+                <div className="bg-gradient-to-r from-pink-50 to-pink-100 p-6 rounded-lg border-l-4 border-pink-500">
+                  <div className="text-xs text-pink-600 font-semibold uppercase tracking-wider mb-2">Hôm nay</div>
+                  <div className="text-2xl font-bold text-pink-700">{(stats.day?.revenueMeHang || 0).toLocaleString()}₫</div>
+                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.day?.profitMeHang || 0).toLocaleString()}₫</div>
+                </div>
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-6 rounded-lg border-l-4 border-purple-500">
+                  <div className="text-xs text-purple-600 font-semibold uppercase tracking-wider mb-2">Tháng này</div>
+                  <div className="text-2xl font-bold text-purple-700">{(stats.month?.revenueMeHang || 0).toLocaleString()}₫</div>
+                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.month?.profitMeHang || 0).toLocaleString()}₫</div>
+                </div>
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg border-l-4 border-blue-500">
+                  <div className="text-xs text-blue-600 font-semibold uppercase tracking-wider mb-2">Năm này</div>
+                  <div className="text-2xl font-bold text-blue-700">{(stats.year?.revenueMeHang || 0).toLocaleString()}₫</div>
+                  <div className="text-sm text-green-600 font-semibold mt-1">↑ Lợi nhuận: {(stats.year?.profitMeHang || 0).toLocaleString()}₫</div>
                 </div>
               </div>
             </div>
@@ -875,17 +1071,34 @@ export default function Admin(){
       {/* Product Management */}
       {step === 'products' && (
         <div>
-          <div className="mb-6 flex justify-between items-center">
+          <div className="mb-6 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
             <h2 className="text-2xl font-semibold">Quản Lý Sản Phẩm</h2>
-            <button 
-              onClick={() => { resetProductForm(); setEditingId(null); setStep('add-product') }}
-              className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800"
-            >
-              ➕ Thêm Sản Phẩm
-            </button>
+            <div className="flex gap-3 items-center w-full sm:w-auto">
+              <select 
+                value={filterCategory}
+                onChange={e => setFilterCategory(e.target.value)}
+                className="px-4 py-2 border rounded-lg bg-white flex-1 sm:flex-none"
+              >
+                <option value="all">🏷️ Tất cả danh mục</option>
+                {categories.map(cat => (
+                  <option key={cat.rowid} value={cat.category}>{cat.category}</option>
+                ))}
+              </select>
+              <button 
+                onClick={() => { resetProductForm(); setEditingId(null); setStep('add-product') }}
+                className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 whitespace-nowrap"
+              >
+                ➕ Thêm Sản Phẩm
+              </button>
+            </div>
           </div>
 
-          {products.length === 0 ? (
+          {(() => {
+            const filtered = filterCategory === 'all' 
+              ? products 
+              : products.filter(p => p.category === filterCategory)
+            
+            return filtered.length === 0 ? (
             <div className="bg-gray-50 p-8 text-center rounded">
               <p className="text-gray-600">Chưa có sản phẩm nào</p>
             </div>
@@ -905,7 +1118,7 @@ export default function Admin(){
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map(p => (
+                  {filtered.map(p => (
                     <tr key={p.id} className="border-b hover:bg-gray-50">
                       <td className="px-4 py-2 font-mono text-sm">{p.id}</td>
                       <td className="px-4 py-2">{p.name}</td>
@@ -935,7 +1148,8 @@ export default function Admin(){
                 </tbody>
               </table>
             </div>
-          )}
+            )
+          })()}
         </div>
       )}
 
@@ -985,6 +1199,14 @@ export default function Admin(){
                 />
                 <label className="text-gray-700 font-medium">Thuộc danh mục Tết</label>
               </div>
+              <div className="flex items-center gap-2 mt-4">
+                <input 
+                  type="checkbox"
+                  checked={productForm.can_ship_province}
+                  onChange={e=>setProductForm({...productForm, can_ship_province: e.target.checked})}
+                />
+                <label className="text-gray-700 font-medium">Có giao hàng liên tỉnh</label>
+              </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
@@ -1001,12 +1223,11 @@ export default function Admin(){
                 </select>
               </div>
               <div>
-                <label className="block text-gray-700 font-medium mb-1">Trọng lượng</label>
+                <label className="block text-gray-700 font-medium mb-1">Trọng lượng (kg)</label>
                 <input 
                   value={productForm.weight} 
                   onChange={e=>setProductForm({...productForm, weight: e.target.value})}
                   className="w-full p-2 border rounded"
-                  placeholder="200g, 500ml..."
                 />
               </div>
             </div>
@@ -1131,7 +1352,7 @@ export default function Admin(){
             {/* Customer Info */}
             <div className="border-b pb-4">
               <h3 className="font-semibold text-gray-700 mb-3">Thông Tin Khách Hàng</h3>
-              <div className="grid md:grid-cols-3 gap-4">
+              <div className="grid md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-gray-700 font-medium mb-1">Tên khách *</label>
                   <input 
@@ -1157,6 +1378,18 @@ export default function Admin(){
                     onChange={e=>setOrderForm({...orderForm, customer_address: e.target.value})}
                     className="w-full p-2 border rounded"
                   />
+                </div>
+                <div>
+                  <label className="block text-gray-700 font-medium mb-1">Người bán *</label>
+                  <select 
+                    value={orderForm.seller}
+                    onChange={e=>setOrderForm({...orderForm, seller: e.target.value})}
+                    className="w-full p-2 border rounded"
+                    required
+                  >
+                    <option value="Quang Tâm">Quang Tâm</option>
+                    <option value="Mẹ Hằng">Mẹ Hằng</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -1326,14 +1559,57 @@ export default function Admin(){
       )}
       {step === 'orders' && (
         <div>
-          <div className="mb-6 flex justify-between items-center">
-            <h2 className="text-2xl font-semibold">Quản Lý Đơn Hàng</h2>
-            <button 
-              onClick={() => { setOrderForm({ customer_name: '', customer_phone: '', customer_address: '', method: 'COD', shipping: 30000, discount: 0, paid: false }); setOrderItems([]); setStep('add-order') }}
-              className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800"
-            >
-              ➕ Thêm Đơn Hàng
-            </button>
+          <div className="mb-6 space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <h2 className="text-2xl font-semibold">Quản Lý Đơn Hàng</h2>
+              <button 
+                onClick={() => { setOrderForm({ customer_name: '', customer_phone: '', customer_address: '', method: 'COD', shipping: 30000, discount: 0, paid: false, seller: 'Quang Tâm' }); setOrderItems([]); setStep('add-order') }}
+                className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 whitespace-nowrap"
+              >
+                ➕ Thêm Đơn Hàng
+              </button>
+            </div>
+            
+            {/* Filters */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-gray-50 p-4 rounded-lg">
+              <select 
+                value={filterOrderStatus}
+                onChange={e => setFilterOrderStatus(e.target.value)}
+                className="px-3 py-2 border rounded-lg bg-white"
+              >
+                <option value="all">📋 Tất cả trạng thái</option>
+                <option value="undelivered">⏳ Chưa giao</option>
+                <option value="delivered">✅ Đã giao</option>
+                <option value="tomorrow_delivery">📅 Giao ngày mai</option>
+                <option value="cancelled">❌ Đã hủy</option>
+                <option value="bom">💣 Bom</option>
+              </select>
+              
+              <select 
+                value={filterSeller}
+                onChange={e => setFilterSeller(e.target.value)}
+                className="px-3 py-2 border rounded-lg bg-white"
+              >
+                <option value="all">👤 Tất cả người bán</option>
+                <option value="Quang Tâm">Quang Tâm</option>
+                <option value="Mẹ Hằng">Mẹ Hằng</option>
+              </select>
+              
+              <input 
+                type="date"
+                value={filterOrderDate}
+                onChange={e => setFilterOrderDate(e.target.value)}
+                className="px-3 py-2 border rounded-lg bg-white"
+                placeholder="Lọc theo ngày"
+              />
+              
+              <button 
+                onClick={() => { setFilterOrderStatus('all'); setFilterOrderDate(''); setFilterSeller('all'); }}
+                className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-700 font-medium"
+              >
+                🔄 Xóa bộ lọc
+              </button>
+            </div>
           </div>
 
           {selectedOrder ? (
@@ -1451,7 +1727,7 @@ export default function Admin(){
                   </div>
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 gap-6 mb-6">
+                <div className="grid md:grid-cols-3 gap-6 mb-6">
                   <div className="bg-gradient-to-br from-slate-50 to-white border border-gray-100 shadow-sm p-5 rounded-xl">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="h-10 w-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-lg">👤</div>
@@ -1462,6 +1738,32 @@ export default function Admin(){
                       <p><span className="font-semibold">SĐT:</span> {selectedOrder.customer_phone}</p>
                       <p><span className="font-semibold">Địa chỉ:</span> {selectedOrder.customer_address}</p>
                       <p className="text-sm text-gray-500">{new Date(selectedOrder.createdAt).toLocaleString('vi-VN')}</p>
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-purple-50 to-white border border-purple-100 shadow-sm p-5 rounded-xl">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-10 w-10 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-lg">👨‍💼</div>
+                      <h4 className="font-semibold text-gray-800 text-lg">Người bán</h4>
+                    </div>
+                    <div className="space-y-2">
+                      <select 
+                        value={selectedOrder.seller || 'Quang Tâm'}
+                        onChange={async (e) => {
+                          try {
+                            await Api.adminUpdateOrder(token, selectedOrder.id, { seller: e.target.value })
+                            setSelectedOrder({...selectedOrder, seller: e.target.value})
+                            showToast('Cập nhật người bán thành công')
+                            await loadOrders(token)
+                            await loadStats(token)
+                          } catch(err) {
+                            showToast('Lỗi cập nhật: ' + (err.response?.data?.error || err.message), 'error')
+                          }
+                        }}
+                        className="w-full p-2 border rounded-lg bg-white"
+                      >
+                        <option value="Quang Tâm">Quang Tâm</option>
+                        <option value="Mẹ Hằng">Mẹ Hằng</option>
+                      </select>
                     </div>
                   </div>
                   <div className="bg-gradient-to-br from-orange-50 to-white border border-orange-100 shadow-sm p-5 rounded-xl">
@@ -1885,26 +2187,44 @@ export default function Admin(){
             </div>
           ) : (
             <div>
-              {orders.length === 0 ? (
-                <div className="bg-gray-50 p-8 text-center rounded">
-                  <p className="text-gray-600">Chưa có đơn hàng nào</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full bg-white rounded shadow">
-                    <thead className="bg-gray-100 border-b">
-                      <tr>
-                        <th className="px-4 py-2 text-left">ID</th>
-                        <th className="px-4 py-2 text-left">Khách</th>
-                        <th className="px-4 py-2 text-right">Tổng</th>
-                        <th className="px-4 py-2 text-center">Trạng Thái</th>
-                        <th className="px-4 py-2 text-left">Ngày</th>
-                        <th className="px-4 py-2 text-center">Hành Động</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orders
-                        .sort((a, b) => {
+              {(() => {
+                let filtered = orders.filter(o => {
+                  // Filter by status
+                  if (filterOrderStatus !== 'all' && o.status !== filterOrderStatus) return false
+                  
+                  // Filter by seller
+                  if (filterSeller !== 'all' && o.seller !== filterSeller) return false
+                  
+                  // Filter by date
+                  if (filterOrderDate) {
+                    const orderDate = new Date(o.createdAt).toISOString().split('T')[0]
+                    if (orderDate !== filterOrderDate) return false
+                  }
+                  
+                  return true
+                })
+                
+                return filtered.length === 0 ? (
+                  <div className="bg-gray-50 p-8 text-center rounded">
+                    <p className="text-gray-600">Không tìm thấy đơn hàng nào</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full bg-white rounded shadow">
+                      <thead className="bg-gray-100 border-b">
+                        <tr>
+                          <th className="px-4 py-2 text-left">ID</th>
+                          <th className="px-4 py-2 text-left">Khách</th>
+                          <th className="px-4 py-2 text-left">Người bán</th>
+                          <th className="px-4 py-2 text-right">Tổng</th>
+                          <th className="px-4 py-2 text-center">Trạng Thái</th>
+                          <th className="px-4 py-2 text-left">Ngày</th>
+                          <th className="px-4 py-2 text-center">Hành Động</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered
+                          .sort((a, b) => {
                           const priority = {
                             'tomorrow_delivery': 1,
                             'delivered': 2,
@@ -1917,60 +2237,66 @@ export default function Admin(){
                           if (aPri !== bPri) return aPri - bPri
                           return new Date(b.createdAt) - new Date(a.createdAt)
                         })
-                        .map(o => (
-                        <tr key={o.id} className="border-b hover:bg-gray-50">
-                          <td className="px-4 py-2 font-mono text-sm">{o.id}</td>
-                          <td className="px-4 py-2">{o.customer_name}</td>
-                          <td className="px-4 py-2 text-right font-medium text-orange-600">{o.total?.toLocaleString()}₫</td>
-                          <td className="px-4 py-2 text-center">
-                            <div className="flex flex-col gap-1 items-center">
-                              <span className={`px-2 py-1 rounded text-white text-xs font-medium ${o.paid ? 'bg-green-600' : 'bg-red-600'}`}>
-                                {o.paid ? '✓ TT' : '✗ Chưa TT'}
+                          .map(o => (
+                          <tr key={o.id} className="border-b hover:bg-gray-50">
+                            <td className="px-4 py-2 font-mono text-sm">{o.id}</td>
+                            <td className="px-4 py-2">{o.customer_name}</td>
+                            <td className="px-4 py-2 text-sm">
+                              <span className="px-2 py-1 rounded bg-purple-100 text-purple-700 font-medium">
+                                {o.seller || 'Quang Tâm'}
                               </span>
-                              <span className={`px-2 py-1 rounded text-white text-xs font-medium ${
-                                o.status === 'delivered' ? 'bg-green-600' :
-                                o.status === 'tomorrow_delivery' ? 'bg-blue-600' :
-                                o.status === 'cancelled' ? 'bg-gray-600' :
-                                o.status === 'bom' ? 'bg-red-600' :
-                                'bg-yellow-600'
-                              }`}>
-                                {o.status === 'delivered' ? '📦 Đã giao' :
-                                 o.status === 'tomorrow_delivery' ? '🚚 Giao mai' :
-                                 o.status === 'cancelled' ? '❌ Hủy' :
-                                 o.status === 'bom' ? '💣 Bom' :
-                                 '⏳ Chưa giao'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2 text-sm text-gray-600">{new Date(o.createdAt).toLocaleDateString('vi-VN')}</td>
-                          <td className="px-4 py-2 text-center">
-                            <button 
-                              onClick={async () => {
-                                try {
-                                  const fullOrder = await Api.adminGetOrder(token, o.id)
-                                  setSelectedOrder({
-                                    ...fullOrder,
-                                    items_json: mergeSimilarItems(fullOrder.items_json || [])
-                                  })
-                                } catch(e) {
-                                  console.error('Error loading order:', e)
-                                  setSelectedOrder({
-                                    ...o,
-                                    items_json: mergeSimilarItems(o.items_json || [])
-                                  })
-                                }
-                              }}
-                              className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
-                            >
-                              👁️ Chi Tiết
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                            </td>
+                            <td className="px-4 py-2 text-right font-medium text-orange-600">{o.total?.toLocaleString()}₫</td>
+                            <td className="px-4 py-2 text-center">
+                              <div className="flex flex-col gap-1 items-center">
+                                <span className={`px-2 py-1 rounded text-white text-xs font-medium ${o.paid ? 'bg-green-600' : 'bg-red-600'}`}>
+                                  {o.paid ? '✓ TT' : '✗ Chưa TT'}
+                                </span>
+                                <span className={`px-2 py-1 rounded text-white text-xs font-medium ${
+                                  o.status === 'delivered' ? 'bg-green-600' :
+                                  o.status === 'tomorrow_delivery' ? 'bg-blue-600' :
+                                  o.status === 'cancelled' ? 'bg-gray-600' :
+                                  o.status === 'bom' ? 'bg-red-600' :
+                                  'bg-yellow-600'
+                                }`}>
+                                  {o.status === 'delivered' ? '📦 Đã giao' :
+                                   o.status === 'tomorrow_delivery' ? '🚚 Giao mai' :
+                                   o.status === 'cancelled' ? '❌ Hủy' :
+                                   o.status === 'bom' ? '💣 Bom' :
+                                   '⏳ Chưa giao'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2 text-sm text-gray-600">{new Date(o.createdAt).toLocaleDateString('vi-VN')}</td>
+                            <td className="px-4 py-2 text-center">
+                              <button 
+                                onClick={async () => {
+                                  try {
+                                    const fullOrder = await Api.adminGetOrder(token, o.id)
+                                    setSelectedOrder({
+                                      ...fullOrder,
+                                      items_json: mergeSimilarItems(fullOrder.items_json || [])
+                                    })
+                                  } catch(e) {
+                                    console.error('Error loading order:', e)
+                                    setSelectedOrder({
+                                      ...o,
+                                      items_json: mergeSimilarItems(o.items_json || [])
+                                    })
+                                  }
+                                }}
+                                className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                              >
+                                👁️ Chi Tiết
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })()}
             </div>
           )}
         </div>
@@ -2123,6 +2449,123 @@ export default function Admin(){
                           </button>
                           <button 
                             onClick={() => deleteCategory(cat.rowid)}
+                            className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+                          >
+                            🗑️ Xóa
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Admin Accounts Management */}
+      {step === 'admins' && (
+        <div>
+          <div className="bg-white p-6 rounded shadow mb-6">
+            <h2 className="text-2xl font-bold mb-4">Quản Lý Tài Khoản Admin</h2>
+            
+            {/* Add/Edit Form */}
+            <div className="bg-gray-50 p-4 rounded mb-6">
+              <h3 className="text-lg font-semibold mb-3">{editingAdminId ? '✏️ Sửa Tài Khoản' : '➕ Tạo Tài Khoản Mới'}</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-gray-700 font-medium mb-2">Tên đăng nhập</label>
+                  <input 
+                    type="text"
+                    value={adminForm.username}
+                    onChange={e => setAdminForm({...adminForm, username: e.target.value})}
+                    placeholder="Nhập tên đăng nhập"
+                    className="w-full px-3 py-2 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 font-medium mb-2">
+                    Mật khẩu {editingAdminId && <span className="text-sm text-gray-500">(Để trống nếu không đổi)</span>}
+                  </label>
+                  <input 
+                    type="password"
+                    value={adminForm.password}
+                    onChange={e => setAdminForm({...adminForm, password: e.target.value})}
+                    placeholder={editingAdminId ? "Để trống nếu không đổi" : "Nhập mật khẩu"}
+                    className="w-full px-3 py-2 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 font-medium mb-2">Vai trò</label>
+                  <select
+                    value={adminForm.role}
+                    onChange={e => setAdminForm({...adminForm, role: e.target.value})}
+                    className="w-full px-3 py-2 border rounded"
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="manager">Manager</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button 
+                  onClick={saveAdmin}
+                  disabled={!adminForm.username || (!editingAdminId && !adminForm.password)}
+                  className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {editingAdminId ? '💾 Cập nhật' : '➕ Tạo tài khoản'}
+                </button>
+                {editingAdminId && (
+                  <button 
+                    onClick={cancelEditAdmin}
+                    className="px-6 py-2 bg-gray-400 text-white rounded hover:bg-gray-500 font-medium"
+                  >
+                    ❌ Hủy
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Admins List */}
+            {admins.length === 0 ? (
+              <div className="bg-gray-50 p-8 text-center rounded">
+                <p className="text-gray-600">Chưa có tài khoản admin nào</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full bg-white rounded">
+                  <thead className="bg-gray-100 border-b">
+                    <tr>
+                      <th className="px-4 py-2 text-left">ID</th>
+                      <th className="px-4 py-2 text-left">Tên đăng nhập</th>
+                      <th className="px-4 py-2 text-left">Vai trò</th>
+                      <th className="px-4 py-2 text-left">Ngày tạo</th>
+                      <th className="px-4 py-2 text-center">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {admins.map(admin => (
+                      <tr key={admin.id} className="border-b hover:bg-gray-50">
+                        <td className="px-4 py-2">{admin.id}</td>
+                        <td className="px-4 py-2 font-medium">{admin.username}</td>
+                        <td className="px-4 py-2">
+                          <span className={`px-2 py-1 rounded text-xs font-semibold ${admin.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {admin.role === 'admin' ? '👑 Admin' : '📋 Manager'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-600">
+                          {new Date(admin.created_at).toLocaleString('vi-VN')}
+                        </td>
+                        <td className="px-4 py-2 text-center space-x-2">
+                          <button 
+                            onClick={() => startEditAdmin(admin)}
+                            className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                          >
+                            ✏️ Sửa
+                          </button>
+                          <button 
+                            onClick={() => showConfirm(`Xóa tài khoản "${admin.username}"?`, () => deleteAdmin(admin.id))}
                             className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
                           >
                             🗑️ Xóa

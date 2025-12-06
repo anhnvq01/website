@@ -10,6 +10,19 @@ export default function Product(){
   const [quantity, setQuantity] = useState(1)
   const [showAddedNotification, setShowAddedNotification] = useState(false)
   const navigate = useNavigate()
+  
+  // Prevent scroll from changing number inputs
+  useEffect(() => {
+    const preventNumberScroll = (e) => {
+      if (e.target.type === 'number') {
+        e.target.blur()
+        setTimeout(() => e.target.focus(), 0)
+      }
+    }
+    document.addEventListener('wheel', preventNumberScroll, { passive: false })
+    return () => document.removeEventListener('wheel', preventNumberScroll)
+  }, [])
+  
   useEffect(()=>{ 
     Api.product(id)
       .then(setP)
@@ -103,7 +116,7 @@ export default function Product(){
               <h4 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
                 <span>📝</span> Mô tả sản phẩm
               </h4>
-              <p className="text-gray-700 leading-relaxed">{p.description || 'Đặc sản Tây Bắc chất lượng cao, đảm bảo nguồn gốc xuất xứ rõ ràng.'}</p>
+              <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">{p.description || 'Đặc sản Tây Bắc chất lượng cao, đảm bảo nguồn gốc xuất xứ rõ ràng.'}</div>
             </div>
           </div>
         </div>
@@ -130,12 +143,6 @@ export default function Product(){
           </div>
 
           <div className="mb-6 flex items-center gap-3 text-sm text-gray-700">
-            {p.weight && (
-              <div className="flex items-center gap-1">
-                <span>⚖️</span>
-                <span className="font-semibold">{p.weight}</span>
-              </div>
-            )}
             <div className="flex items-center gap-1">
               <span>📊</span>
               <span className="font-semibold">Đã bán: {p.sold_count || 0}</span>

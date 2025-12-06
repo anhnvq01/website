@@ -133,7 +133,7 @@ export default function Home()
   
   return (
     <div>
-      <section className="hero w-full h-72 md:h-96 lg:h-[38rem] mb-12">
+      <section className="hero w-full h-72 md:h-96 lg:h-[38rem] mb-2">
         <div className="hero-slider relative w-full h-full overflow-hidden rounded-b-2xl">
           {slides.map((s, i)=> (
             <div key={i} className={"hero-slide absolute inset-0 transition-opacity duration-1000 " + (i===slide ? 'opacity-100 z-10' : 'opacity-0 z-0')}>
@@ -195,13 +195,13 @@ export default function Home()
 
       {/* Hot Promotions */}
       {hotPromo.length > 0 && (
-        <section className="container mx-auto px-4 py-12">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-3">
-              <span className="text-3xl">💥</span>
-              Danh mục sản phẩm khuyến mãi HOT
+        <section className="container mx-auto px-4 pt-4 pb-12">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-8">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-2 sm:gap-3">
+              <span className="text-2xl sm:text-3xl">💥</span>
+              <span className="leading-tight">Danh mục sản phẩm khuyến mãi HOT</span>
             </h2>
-            <Link to="/promo" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
+            <Link to="/promo" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base whitespace-nowrap">
               Xem tất cả
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -220,7 +220,7 @@ export default function Home()
           <div className="flex items-center justify-between mb-10 gap-4">
             <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-800 flex items-center gap-2 md:gap-3 whitespace-nowrap">
               <span className="text-3xl md:text-4xl">🎊</span>
-              <span className="whitespace-nowrap">Sản Phẩm Phục Vụ Tết Nguyên Đán</span>
+              <span className="whitespace-nowrap">Sản Phẩm Phục Vụ Tết</span>
             </h2>
             <Link to={`/category/${tetCategoryName}`} className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base whitespace-nowrap flex-shrink-0">
               Xem tất cả

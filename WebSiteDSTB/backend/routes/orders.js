@@ -9,9 +9,9 @@ router.post('/', (req, res) => {
   const id = 'TB' + Date.now();
   
   // Insert order
-  db.prepare(`INSERT INTO orders (id, createdAt, customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-    id, new Date().toISOString(), customer.name, customer.phone, customer.address, JSON.stringify(items), subtotal, shipping, discount, total, method, 0
+  db.prepare(`INSERT INTO orders (id, createdAt, customer_name, customer_phone, customer_address, customer_province, items_json, subtotal, shipping, discount, total, method, paid)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    id, new Date().toISOString(), customer.name, customer.phone, customer.address, customer.province || 'Hà Nội', JSON.stringify(items), subtotal, shipping, discount, total, method, 0
   );
   
   // Update sold_count for each product

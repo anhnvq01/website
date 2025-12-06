@@ -51,5 +51,11 @@ export default {
   adminAddCategory: (token, category) => API.post('/admin/categories', { category }, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
   adminUpdateCategory: (token, id, category) => API.put(`/admin/categories/${id}`, { category }, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
   adminDeleteCategory: (token, id) => API.delete(`/admin/categories/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
-  adminReorderCategories: (token, order) => API.post('/admin/categories/reorder', { order }, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data)
+  adminReorderCategories: (token, order) => API.post('/admin/categories/reorder', { order }, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+
+  // Admin - Admins
+  adminGetAdmins: (token) => API.get('/admin/admins', { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminCreateAdmin: (token, payload) => API.post('/admin/admins', payload, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminUpdateAdmin: (token, id, payload) => API.put(`/admin/admins/${id}`, payload, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminDeleteAdmin: (token, id) => API.delete(`/admin/admins/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data)
 }
