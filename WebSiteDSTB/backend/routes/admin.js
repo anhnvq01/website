@@ -38,14 +38,49 @@ function ensureImagesArray(value, fallback) {
   return [];
 }
 
+// Ensure admins table exists
+try {
+  db.prepare('SELECT id, username, password_hash, role, created_at FROM admins LIMIT 1').get();
+} catch (e) {
+  // Table doesn't exist, create it
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS admins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT DEFAULT 'admin',
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `).run();
+  
+  // Create default admin account
+  const defaultHash = bcrypt.hashSync('admin123', 10);
+  try {
+    db.prepare('INSERT INTO admins (username, password_hash, role) VALUES (?, ?, ?)').run('admin', defaultHash, 'admin');
+    console.log('Default admin account created: admin / admin123');
+  } catch (e) {
+    console.log('Admin table already initialized');
+  }
+}
+
+// Ensure seller column exists in orders table
+try {
+  db.prepare('SELECT seller FROM orders LIMIT 1').get();
+  console.log('Seller column already exists');
+} catch (e) {
+  console.log('Adding seller column to orders table...');
+  db.prepare('ALTER TABLE orders ADD COLUMN seller TEXT DEFAULT "Quang Tâm"').run();
+  console.log('Seller column added successfully');
+}
+
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Missing' });
-  const row = db.prepare('SELECT * FROM admin WHERE username = ?').get(username);
+  const row = db.prepare('SELECT * FROM admins WHERE username = ?').get(username);
   if (!row) return res.status(401).json({ error: 'Invalid' });
   const ok = bcrypt.compareSync(password, row.password_hash);
   if (!ok) return res.status(401).json({ error: 'Invalid' });
-  const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '8h' });
+  const token = jwt.sign({ username, id: row.id, role: row.role }, JWT_SECRET, { expiresIn: '8h' });
   res.json({ token });
 });
 
@@ -68,13 +103,20 @@ router.get('/me', auth, (req, res) => {
   res.json({ username: req.user.username });
 });
 
+const toShipFlag = (value) => {
+  // Accept boolean, numeric, or string representations
+  if (value === 0 || value === '0' || value === false || value === 'false') return 0;
+  return 1;
+};
+
 router.post('/products', auth, (req, res) => {
-  const { id, name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet } = req.body;
+  const { id, name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet, can_ship_province } = req.body;
   const pid = id || 'P' + Date.now();
   const gallery = ensureImagesArray(images, image);
   const mainImage = image || gallery[0] || '';
-  db.prepare('INSERT OR REPLACE INTO products (id,name,price,category,description,image,weight,promo_price,images,sold_count,import_price,is_tet) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-    .run(pid, name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count || 0, import_price || 0, is_tet || 0);
+  const shipFlag = toShipFlag(can_ship_province);
+  db.prepare('INSERT OR REPLACE INTO products (id,name,price,category,description,image,weight,promo_price,images,sold_count,import_price,is_tet,can_ship_province) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(pid, name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count || 0, import_price || 0, is_tet || 0, shipFlag);
   res.json({ ok: true, id: pid });
 });
 
@@ -124,16 +166,17 @@ router.get('/products/:id', auth, (req, res) => {
 
 // Update product
 router.put('/products/:id', auth, (req, res) => {
-  const { name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet } = req.body;
+  const { name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet, can_ship_province } = req.body;
   const id = req.params.id;
   const gallery = ensureImagesArray(images, image);
   const mainImage = image || gallery[0] || '';
+  const shipFlag = toShipFlag(can_ship_province);
 
   db.prepare(`
     UPDATE products 
-    SET name = ?, price = ?, category = ?, description = ?, image = ?, weight = ?, promo_price = ?, images = ?, sold_count = ?, import_price = ?, is_tet = ?
+    SET name = ?, price = ?, category = ?, description = ?, image = ?, weight = ?, promo_price = ?, images = ?, sold_count = ?, import_price = ?, is_tet = ?, can_ship_province = ?
     WHERE id = ?
-  `).run(name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count ?? 0, import_price || 0, is_tet || 0, id);
+  `).run(name, price, category, description, mainImage, weight ?? null, promo_price ?? null, JSON.stringify(gallery), sold_count ?? 0, import_price || 0, is_tet || 0, shipFlag, id);
   
   res.json({ ok: true });
 });
@@ -161,13 +204,22 @@ router.get('/orders', auth, (req, res) => {
 
 // Create order (admin) - MUST be before /:id routes
 router.post('/orders', auth, (req, res) => {
-  const { customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid } = req.body;
+  const { customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller } = req.body;
   const id = 'ORD' + Date.now();
   
   db.prepare(`
-    INSERT INTO orders (id, createdAt, customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, new Date().toISOString(), customer_name, customer_phone, customer_address, JSON.stringify(items_json), subtotal, shipping, discount, total, method, paid ? 1 : 0);
+    INSERT INTO orders (id, createdAt, customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, new Date().toISOString(), customer_name, customer_phone, customer_address, JSON.stringify(items_json), subtotal, shipping, discount, total, method, paid ? 1 : 0, seller || 'Quang Tâm');
+  
+  // Update sold_count for each product
+  const updateSold = db.prepare('UPDATE products SET sold_count = sold_count + ? WHERE id = ?');
+  (items_json || []).forEach(item => {
+    if (item.id) {
+      console.log(`Updating sold_count for product ${item.id}, adding ${item.qty || 1}`);
+      updateSold.run(item.qty || 1, item.id);
+    }
+  });
   
   res.json({ ok: true, id });
 });
@@ -224,7 +276,8 @@ router.patch('/orders/:id', auth, (req, res) => {
       total: 'total',
       method: 'method',
       paid: 'paid',
-      status: 'status'
+      status: 'status',
+      seller: 'seller'
     };
 
     for (const [key, dbField] of Object.entries(allowedFields)) {
@@ -287,13 +340,23 @@ router.get('/stats', auth, (req, res) => {
   const row = db.prepare(`SELECT SUM(total) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ?`).get(startIso, endIso);
   const revenue = row && row.revenue ? Number(row.revenue) : 0;
 
+  // Calculate stats by seller
+  const quangTamRow = db.prepare(`SELECT SUM(total) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ? AND (seller = ? OR seller IS NULL)`).get(startIso, endIso, 'Quang Tâm');
+  const meHangRow = db.prepare(`SELECT SUM(total) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ? AND seller = ?`).get(startIso, endIso, 'Mẹ Hằng');
+  
+  const revenueQuangTam = quangTamRow && quangTamRow.revenue ? Number(quangTamRow.revenue) : 0;
+  const revenueMeHang = meHangRow && meHangRow.revenue ? Number(meHangRow.revenue) : 0;
+
   // Calculate profit based on actual import_price
-  const orders = db.prepare(`SELECT items_json FROM orders WHERE createdAt >= ? AND createdAt <= ?`).all(startIso, endIso);
+  const orders = db.prepare(`SELECT items_json, seller FROM orders WHERE createdAt >= ? AND createdAt <= ?`).all(startIso, endIso);
   let totalProfit = 0;
+  let profitQuangTam = 0;
+  let profitMeHang = 0;
   
   orders.forEach(order => {
     try {
       const items = JSON.parse(order.items_json || '[]');
+      let orderProfit = 0;
       items.forEach(item => {
         // Get product details including import_price
         const product = db.prepare('SELECT import_price, promo_price, price FROM products WHERE id = ?').get(item.id);
@@ -302,15 +365,25 @@ router.get('/stats', auth, (req, res) => {
           const salePrice = Number(product.promo_price || product.price || 0);
           const quantity = Number(item.qty || 1);
           const itemProfit = (salePrice - importPrice) * quantity;
-          totalProfit += itemProfit;
+          orderProfit += itemProfit;
         }
       });
+      totalProfit += orderProfit;
+      
+      // Distribute profit by seller
+      if (order.seller === 'Mẹ Hằng') {
+        profitMeHang += orderProfit;
+      } else {
+        profitQuangTam += orderProfit; // Default to Quang Tâm
+      }
     } catch (e) {
       console.error('Error calculating profit for order:', e);
     }
   });
   
   const profit = Math.round(totalProfit);
+  profitQuangTam = Math.round(profitQuangTam);
+  profitMeHang = Math.round(profitMeHang);
 
   // Additional metrics
   const totalProducts = db.prepare('SELECT COUNT(*) as count FROM products').get().count || 0;
@@ -329,6 +402,10 @@ router.get('/stats', auth, (req, res) => {
     period, 
     revenue, 
     profit,
+    revenueQuangTam,
+    revenueMeHang,
+    profitQuangTam,
+    profitMeHang,
     totalProducts,
     totalOrders,
     undeliveredOrders,
@@ -385,6 +462,65 @@ router.post('/categories/reorder', auth, (req, res) => {
     console.error('Reorder categories error:', e);
     res.status(500).json({ error: 'Reorder failed' });
   }
+});
+
+// Admin management endpoints
+router.get('/admins', auth, (req, res) => {
+  const admins = db.prepare('SELECT id, username, role, created_at FROM admins ORDER BY created_at DESC').all();
+  res.json(admins);
+});
+
+router.post('/admins', auth, (req, res) => {
+  const { username, password, role } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+  
+  // Check if username already exists
+  const existing = db.prepare('SELECT id FROM admins WHERE username = ?').get(username);
+  if (existing) return res.status(400).json({ error: 'Username already exists' });
+  
+  const passwordHash = bcrypt.hashSync(password, 10);
+  const result = db.prepare('INSERT INTO admins (username, password_hash, role) VALUES (?, ?, ?)').run(username, passwordHash, role || 'admin');
+  res.json({ ok: true, id: result.lastInsertRowid });
+});
+
+router.put('/admins/:id', auth, (req, res) => {
+  const { id } = req.params;
+  const { username, password, role } = req.body;
+  
+  if (!username) return res.status(400).json({ error: 'Username required' });
+  
+  // Check if username is taken by another user
+  const existing = db.prepare('SELECT id FROM admins WHERE username = ? AND id != ?').get(username, id);
+  if (existing) return res.status(400).json({ error: 'Username already exists' });
+  
+  if (password && password.trim()) {
+    // Update with new password
+    const passwordHash = bcrypt.hashSync(password, 10);
+    db.prepare('UPDATE admins SET username = ?, password_hash = ?, role = ? WHERE id = ?').run(username, passwordHash, role || 'admin', id);
+  } else {
+    // Update without changing password
+    db.prepare('UPDATE admins SET username = ?, role = ? WHERE id = ?').run(username, role || 'admin', id);
+  }
+  
+  res.json({ ok: true });
+});
+
+router.delete('/admins/:id', auth, (req, res) => {
+  const { id } = req.params;
+  
+  // Prevent deleting yourself
+  if (req.user.id == id) {
+    return res.status(400).json({ error: 'Cannot delete your own account' });
+  }
+  
+  // Prevent deleting last admin
+  const adminCount = db.prepare('SELECT COUNT(*) as count FROM admins').get();
+  if (adminCount.count <= 1) {
+    return res.status(400).json({ error: 'Cannot delete the last admin account' });
+  }
+  
+  db.prepare('DELETE FROM admins WHERE id = ?').run(id);
+  res.json({ ok: true });
 });
 
 module.exports = router;

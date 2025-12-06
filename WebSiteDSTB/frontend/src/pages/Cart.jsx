@@ -8,6 +8,18 @@ export default function Cart(){
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
   
+  // Prevent scroll from changing number inputs
+  useEffect(() => {
+    const preventNumberScroll = (e) => {
+      if (e.target.type === 'number') {
+        e.target.blur()
+        setTimeout(() => e.target.focus(), 0)
+      }
+    }
+    document.addEventListener('wheel', preventNumberScroll, { passive: false })
+    return () => document.removeEventListener('wheel', preventNumberScroll)
+  }, [])
+  
   useEffect(()=> {
     const c = JSON.parse(localStorage.getItem('tb_cart')||'[]')
     setItems(c)

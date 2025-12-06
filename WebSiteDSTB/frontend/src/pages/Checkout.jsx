@@ -1,8 +1,16 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Api from '../services/api'
+import { PROVINCES, calculateShipping, canShipToProvince } from '../utils/provinces'
 
-function CheckoutOrderSummary({ cart, discount }) {
+const parseWeight = (value) => {
+  if (value === null || value === undefined || value === '') return 0
+  const cleaned = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+  const num = parseFloat(cleaned)
+  return Number.isFinite(num) ? num : 0
+}
+
+function CheckoutOrderSummary({ cart, discount, province }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -12,9 +20,9 @@ function CheckoutOrderSummary({ cart, discount }) {
         cart.map(async (it) => {
           try {
             const p = await Api.product(it.id)
-            return { ...it, name: p.name, price: p.promo_price || p.price }
+            return { ...it, name: p.name, price: p.promo_price || p.price, weight: parseWeight(p.weight), can_ship_province: p.can_ship_province }
           } catch {
-            return { ...it, name: it.id, price: 0 }
+            return { ...it, name: it.id, price: 0, weight: 0, can_ship_province: 1 }
           }
         })
       )
@@ -34,7 +42,8 @@ function CheckoutOrderSummary({ cart, discount }) {
   }
 
   const subtotal = items.reduce((s, it) => s + it.price * it.qty, 0)
-  const shipping = 30000
+  const totalWeight = items.reduce((s, it) => s + (it.weight || 0) * it.qty, 0)
+  const shipping = calculateShipping(totalWeight, province || 'Hà Nội')
   const total = subtotal + shipping - Number(discount || 0)
 
   return (
@@ -77,11 +86,13 @@ export default function Checkout(){
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
+  const [province, setProvince] = useState('Hà Nội')
   const [method, setMethod] = useState('COD')
   const [discount, setDiscount] = useState(0)
   const [phoneError, setPhoneError] = useState('')
   const [nameError, setNameError] = useState('')
   const [addressError, setAddressError] = useState('')
+  const [provinceError, setProvinceError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const navigate = useNavigate()
   
@@ -94,15 +105,16 @@ export default function Checkout(){
     if (savedForm.name) setName(savedForm.name)
     if (savedForm.phone) setPhone(savedForm.phone)
     if (savedForm.address) setAddress(savedForm.address)
+    if (savedForm.province) setProvince(savedForm.province)
     if (savedForm.method) setMethod(savedForm.method)
   },[])
   
   // Save form data to localStorage on change
   useEffect(() => {
     localStorage.setItem('tb_checkout_form', JSON.stringify({
-      name, phone, address, method
+      name, phone, address, province, method
     }))
-  }, [name, phone, address, method])
+  }, [name, phone, address, province, method])
   
   async function submit(e){
     e.preventDefault()
@@ -140,13 +152,27 @@ export default function Checkout(){
     
     // need to enrich cart with product details from backend
     const enriched = await Promise.all(cart.map(async it => {
-      try { const p = await Api.product(it.id); return {...it, name: p.name, price: p.promo_price || p.price} } catch { return {...it, name: it.id, price: 0} }
+      try { const p = await Api.product(it.id); return {...it, name: p.name, price: p.promo_price || p.price, weight: parseWeight(p.weight), can_ship_province: p.can_ship_province} } catch { return {...it, name: it.id, price: 0, weight: 0, can_ship_province: 1} }
     }))
+    
+    // Check if all products can be shipped to selected province
+    if (province !== 'Hà Nội') {
+      const cannotShip = enriched.filter(it => !canShipToProvince(it, province))
+      if (cannotShip.length > 0) {
+        const productNames = cannotShip.map(it => it.name).join(', ')
+        setProvinceError(`Sản phẩm sau không giao được đến ${province}: ${productNames}. Vui lòng loại bỏ sản phẩm khỏi giỏ hàng.`)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        return
+      }
+    }
+    setProvinceError('')
+    
     const subtotal = enriched.reduce((s,it)=> s + it.price*it.qty, 0)
-    const shipping = Number(import.meta.env.VITE_SHIPPING || 30000)
+    const totalWeight = enriched.reduce((s,it)=> s + (it.weight || 0)*it.qty, 0)
+    const shipping = calculateShipping(totalWeight, province)
     const total = subtotal + shipping - Number(discount||0)
     const payload = {
-      customer: { name: trimmedName, phone, address: trimmedAddress },
+      customer: { name: trimmedName, phone, address: trimmedAddress, province },
       items: enriched,
       subtotal, shipping, discount: Number(discount||0), total, method
     }
@@ -245,6 +271,26 @@ export default function Checkout(){
             </div>
           )}
           
+          <label className="block text-gray-700 font-semibold mb-2 mt-4">Tỉnh/Thành phố <span className="text-red-600">*</span></label>
+          <select 
+            required
+            value={province} 
+            onChange={e=>{setProvince(e.target.value); setProvinceError('')}} 
+            className={`w-full p-2 border rounded my-1 ${provinceError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
+          >
+            {PROVINCES.map(p => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+          {provinceError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-2 flex items-start gap-2">
+              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <span className="text-sm">{provinceError}</span>
+            </div>
+          )}
+          
           <label className="block text-gray-700 font-semibold mb-2 mt-4">Phương thức thanh toán</label>
           <select value={method} onChange={e=>setMethod(e.target.value)} className="w-full p-2 border rounded my-1">
             <option value="COD">COD (Thanh toán khi nhận hàng)</option>
@@ -260,17 +306,18 @@ export default function Checkout(){
               <div className="bg-orange-50 rounded-lg p-3 border-l-2 border-orange-400">
                 <div className="font-semibold text-orange-800 mb-1">▸ Nội thành Hà Nội</div>
                 <div className="text-gray-700">
-                  Giao hàng nhanh trong ngày, phí ship từ <span className="font-bold text-orange-600">30.000đ/đơn</span> (tùy khu vực)
+                  Giao hàng nhanh trong ngày, phí ship <span className="font-bold text-orange-600">Từ 30.000đ/đơn</span>
                 </div>
               </div>
               <div className="bg-blue-50 rounded-lg p-3 border-l-2 border-blue-400">
-                <div className="font-semibold text-blue-800 mb-1">▸ Giao hàng toàn quốc</div>
+                <div className="font-semibold text-blue-800 mb-1">▸ Giao hàng liên tỉnh</div>
                 <div className="text-gray-700">
-                  Phí ship cố định <span className="font-bold text-blue-600">50.000đ/đơn</span>, không giới hạn số lượng
+                  • Đơn hàng ≤ 5kg: <span className="font-bold text-blue-600">35.000đ</span><br/>
+                  • Đơn hàng &gt; 5kg: <span className="font-bold text-blue-600">7.000đ/kg</span>
                 </div>
               </div>
               <div className="text-xs text-gray-500 bg-gray-50 rounded p-2 italic">
-                💡 Lưu ý: Một số sản phẩm đặc biệt (Trâu, Bò, Cá gác bếp từ 50.000đ/kg) có thể phát sinh phí vận chuyển cao hơn
+                💡 Lưu ý: Một số sản phẩm không giao được liên tỉnh. Hệ thống sẽ tự động kiểm tra khi bạn đặt hàng.
               </div>
             </div>
           </div>
@@ -279,7 +326,7 @@ export default function Checkout(){
         </div>
         <div className="p-4 bg-white rounded shadow">
           <h3 className="font-semibold text-lg mb-4">Đơn hàng</h3>
-          <CheckoutOrderSummary cart={cart} discount={discount} />
+          <CheckoutOrderSummary cart={cart} discount={discount} province={province} />
         </div>
       </form>
     </div>

@@ -181,9 +181,14 @@ function App(){
       setHeaderHeight(hh)
     }
     updateHeights()
+    // Re-calculate when isLoggedIn changes
+    const timer = setTimeout(updateHeights, 100)
     window.addEventListener('resize', updateHeights)
-    return ()=> window.removeEventListener('resize', updateHeights)
-  }, [])
+    return ()=> {
+      clearTimeout(timer)
+      window.removeEventListener('resize', updateHeights)
+    }
+  }, [isLoggedIn])
 
   useEffect(()=>{
     const onScroll = ()=>{
@@ -219,8 +224,9 @@ function App(){
               )}
             </div>
           </div>
-        </div>          {/* Main header (fixed below topbar) */}
-          <div ref={headerRef} className="main-header" style={{ position: 'fixed', top: `${topbarHeight}px`, left:0, right:0, zIndex: 45 }}>
+        </div>
+        {/* Main header (fixed below topbar) */}
+        <div ref={headerRef} className="main-header" style={{ position: 'fixed', top: `${topbarHeight}px`, left:0, right:0, zIndex: 45 }}>
             <div className="container mx-auto flex items-center justify-between px-4 py-3 lg:py-4">
               <div className="flex items-center gap-4 lg:gap-8 flex-1 min-w-0">
                 <button className="lg:hidden p-2 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0" onClick={()=>setMobileOpen(v=>!v)} aria-label="Menu">
