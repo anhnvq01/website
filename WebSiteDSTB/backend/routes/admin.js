@@ -73,6 +73,16 @@ try {
   console.log('Seller column added successfully');
 }
 
+// Ensure extra_cost column exists in orders table
+try {
+  db.prepare('SELECT extra_cost FROM orders LIMIT 1').get();
+  console.log('Extra_cost column already exists');
+} catch (e) {
+  console.log('Adding extra_cost column to orders table...');
+  db.prepare('ALTER TABLE orders ADD COLUMN extra_cost INTEGER DEFAULT 0').run();
+  console.log('Extra_cost column added successfully');
+}
+
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Missing' });
@@ -204,13 +214,13 @@ router.get('/orders', auth, (req, res) => {
 
 // Create order (admin) - MUST be before /:id routes
 router.post('/orders', auth, (req, res) => {
-  const { customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller } = req.body;
+  const { customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller, extra_cost } = req.body;
   const id = 'ORD' + Date.now();
   
   db.prepare(`
-    INSERT INTO orders (id, createdAt, customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, new Date().toISOString(), customer_name, customer_phone, customer_address, JSON.stringify(items_json), subtotal, shipping, discount, total, method, paid ? 1 : 0, seller || 'Quang Tâm');
+    INSERT INTO orders (id, createdAt, customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller, extra_cost)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, new Date().toISOString(), customer_name, customer_phone, customer_address, JSON.stringify(items_json), subtotal, shipping, discount, total, method, paid ? 1 : 0, seller || 'Quang Tâm', extra_cost || 0);
   
   // Update sold_count for each product
   const updateSold = db.prepare('UPDATE products SET sold_count = sold_count + ? WHERE id = ?');
@@ -249,8 +259,32 @@ router.patch('/orders/:id/mark-unpaid', auth, (req, res) => {
 });
 
 // Delete order
-router.delete('/orders/:id', auth, (req, res) => {
-  db.prepare('DELETE FROM orders WHERE id = ?').run(req.params.id);
+router.delete('/orders/:id', auth, async (req, res) => {
+  const id = req.params.id;
+  
+  // Get order details before deletion to reduce sold_count and notify
+  const order = db.prepare('SELECT id, customer_name, customer_phone, customer_address, customer_province, items_json FROM orders WHERE id = ?').get(id);
+  
+  if (order && order.items_json) {
+    try {
+      const items = JSON.parse(order.items_json);
+      const updateSold = db.prepare('UPDATE products SET sold_count = MAX(0, sold_count - ?) WHERE id = ?');
+      
+      // Reduce sold_count for each product
+      items.forEach(item => {
+        if (item.id) {
+          const qty = item.qty || 1;
+          console.log(`Reducing sold_count for product ${item.id}, subtracting ${qty}`);
+          updateSold.run(qty, item.id);
+        }
+      });
+    } catch (e) {
+      console.error('Error reducing sold_count:', e);
+    }
+  }
+  
+  // Delete the order
+  db.prepare('DELETE FROM orders WHERE id = ?').run(id);
   res.json({ ok: true });
 });
 
@@ -277,7 +311,8 @@ router.patch('/orders/:id', auth, (req, res) => {
       method: 'method',
       paid: 'paid',
       status: 'status',
-      seller: 'seller'
+      seller: 'seller',
+      extra_cost: 'extra_cost'
     };
 
     for (const [key, dbField] of Object.entries(allowedFields)) {
@@ -337,18 +372,19 @@ router.get('/stats', auth, (req, res) => {
   const end = new Date();
   const endIso = end.toISOString();
 
-  const row = db.prepare(`SELECT SUM(total) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ?`).get(startIso, endIso);
+  // Calculate revenue: total - shipping - extra_cost
+  const row = db.prepare(`SELECT SUM(total - COALESCE(shipping, 0) - COALESCE(extra_cost, 0)) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ?`).get(startIso, endIso);
   const revenue = row && row.revenue ? Number(row.revenue) : 0;
 
   // Calculate stats by seller
-  const quangTamRow = db.prepare(`SELECT SUM(total) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ? AND (seller = ? OR seller IS NULL)`).get(startIso, endIso, 'Quang Tâm');
-  const meHangRow = db.prepare(`SELECT SUM(total) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ? AND seller = ?`).get(startIso, endIso, 'Mẹ Hằng');
+  const quangTamRow = db.prepare(`SELECT SUM(total - COALESCE(shipping, 0) - COALESCE(extra_cost, 0)) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ? AND (seller = ? OR seller IS NULL)`).get(startIso, endIso, 'Quang Tâm');
+  const meHangRow = db.prepare(`SELECT SUM(total - COALESCE(shipping, 0) - COALESCE(extra_cost, 0)) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ? AND seller = ?`).get(startIso, endIso, 'Mẹ Hằng');
   
   const revenueQuangTam = quangTamRow && quangTamRow.revenue ? Number(quangTamRow.revenue) : 0;
   const revenueMeHang = meHangRow && meHangRow.revenue ? Number(meHangRow.revenue) : 0;
 
-  // Calculate profit based on actual import_price
-  const orders = db.prepare(`SELECT items_json, seller FROM orders WHERE createdAt >= ? AND createdAt <= ?`).all(startIso, endIso);
+  // Calculate profit: revenue - total import cost - extra_cost
+  const orders = db.prepare(`SELECT items_json, seller, COALESCE(extra_cost, 0) as extra_cost FROM orders WHERE createdAt >= ? AND createdAt <= ?`).all(startIso, endIso);
   let totalProfit = 0;
   let profitQuangTam = 0;
   let profitMeHang = 0;
@@ -368,6 +404,9 @@ router.get('/stats', auth, (req, res) => {
           orderProfit += itemProfit;
         }
       });
+      
+      // Subtract extra_cost from profit
+      orderProfit -= Number(order.extra_cost || 0);
       totalProfit += orderProfit;
       
       // Distribute profit by seller

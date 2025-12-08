@@ -37,14 +37,11 @@ export default function Product(){
     if(found) found.qty += quantity; else cart.push({id, qty: quantity})
     localStorage.setItem('tb_cart', JSON.stringify(cart))
     
-    // Trigger cart update event
-    window.dispatchEvent(new Event('cartUpdated'))
+    // Trigger cart update event with animation flag
+    window.dispatchEvent(new CustomEvent('cartUpdated', { detail: { animate: true } }))
     
     // Show notification
     setShowAddedNotification(true)
-    
-    // Scroll to top to see notification
-    window.scrollTo({ top: 0, behavior: 'smooth' })
     
     setTimeout(() => setShowAddedNotification(false), 3000)
   }
@@ -208,7 +205,7 @@ export default function Product(){
               className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2"
             >
               <span className="text-xl">🔄</span>
-              Tiếp tục mua sắm
+              Tiếp tục mua
             </button>
             <Link 
               to="/cart" 

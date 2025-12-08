@@ -12,6 +12,17 @@ export default function Admin(){
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' })
   const [confirmDialog, setConfirmDialog] = useState({ visible: false, message: '', onConfirm: null })
 
+  // Image crop states - declare early for useEffect
+  const [showCropTool, setShowCropTool] = useState(false)
+  const [cropImage, setCropImage] = useState(null)
+  const [cropOffsetX, setCropOffsetX] = useState(0)
+  const [cropOffsetY, setCropOffsetY] = useState(0)
+  const [isDraggingCrop, setIsDraggingCrop] = useState(false)
+  const [dragStartX, setDragStartX] = useState(0)
+  const [dragStartY, setDragStartY] = useState(0)
+  const canvasRef = useRef(null)
+  const cropCanvasRef = useRef(null)
+
   const showToast = (message, type = 'success') => {
     if (toastTimer.current) clearTimeout(toastTimer.current)
     setToast({ visible: true, message, type })
@@ -51,6 +62,45 @@ export default function Admin(){
       validateAndLoad(savedToken)
     }
   }, [])
+
+  // Draw crop image on canvas when showCropTool changes
+  useEffect(() => {
+    if (!showCropTool || !cropImage || !cropCanvasRef.current) return
+    
+    const canvas = cropCanvasRef.current
+    const ctx = canvas.getContext('2d')
+    const img = new Image()
+    
+    img.onload = () => {
+      // Set canvas size to match image aspect ratio (square for cropping)
+      const size = Math.min(img.width, img.height)
+      canvas.width = size
+      canvas.height = size
+      
+      // Draw with adjustable offset
+      const offsetX = cropOffsetX
+      const offsetY = cropOffsetY
+      ctx.drawImage(img, offsetX, offsetY, size, size, 0, 0, size, size)
+      
+      // Draw grid overlay to show crop area
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
+      ctx.lineWidth = 1
+      const gridSize = size / 3
+      for (let i = 1; i < 3; i++) {
+        ctx.beginPath()
+        ctx.moveTo(gridSize * i, 0)
+        ctx.lineTo(gridSize * i, size)
+        ctx.stroke()
+        
+        ctx.beginPath()
+        ctx.moveTo(0, gridSize * i)
+        ctx.lineTo(size, gridSize * i)
+        ctx.stroke()
+      }
+    }
+    
+    img.src = cropImage
+  }, [showCropTool, cropImage, cropOffsetX, cropOffsetY])
 
   // Product management
   const [products, setProducts] = useState([])
@@ -92,7 +142,8 @@ export default function Admin(){
   const [newStatus, setNewStatus] = useState('')
   const [stats, setStats] = useState({})
   const [filterOrderStatus, setFilterOrderStatus] = useState('all')
-  const [filterOrderDate, setFilterOrderDate] = useState('')
+  const [filterOrderDateFrom, setFilterOrderDateFrom] = useState('')
+  const [filterOrderDateTo, setFilterOrderDateTo] = useState('')
   const [filterSeller, setFilterSeller] = useState('all')
   const [orderForm, setOrderForm] = useState({
     customer_name: '',
@@ -102,8 +153,19 @@ export default function Admin(){
     shipping: 30000,
     discount: 0,
     paid: false,
-    seller: 'Quang Tâm'
+    seller: 'Quang Tâm',
+    extra_cost: 0
   })
+
+  // Validation error states
+  const [productFormErrors, setProductFormErrors] = useState({})
+  const [orderFormErrors, setOrderFormErrors] = useState({})
+  
+  // Refs for scrolling to errors
+  const productFormRef = useRef(null)
+  const orderFormRef = useRef(null)
+  const statusUpdateFormRef = useRef(null)
+  const invoiceEditFormRef = useRef(null)
 
   // Admin accounts management
   const [admins, setAdmins] = useState([])
@@ -288,27 +350,99 @@ export default function Admin(){
 
     const reader = new FileReader()
     reader.onload = (evt) => {
-      setImagePreview(evt.target.result)
+      setCropImage(evt.target.result)
+      setShowCropTool(true)
     }
     reader.readAsDataURL(file)
+  }
 
-    setUploading(true)
-    try {
-      const result = await Api.adminUploadImage(token, file)
-      setProductForm(prev => ({...prev, image: result.imageUrl}))
-      setUploadedFile(file.name)
-      showToast('Tải ảnh thành công!')
-    } catch(err) {
-      if (!handleAuthError(err)) {
-        showToast('Lỗi tải ảnh: ' + (err.response?.data?.error || err.message), 'error')
+  function handleCropConfirm() {
+    const canvas = cropCanvasRef.current
+    if (!canvas) return
+    
+    canvas.toBlob(async (blob) => {
+      try {
+        const croppedFile = new File([blob], 'cropped-image.jpg', { type: 'image/jpeg' })
+        setUploading(true)
+        const result = await Api.adminUploadImage(token, croppedFile)
+        setImagePreview(result.imageUrl)
+        setProductForm(prev => ({...prev, image: result.imageUrl}))
+        setUploadedFile('cropped-image.jpg')
+        setShowCropTool(false)
+        setCropImage(null)
+        setCropOffsetX(0)
+        setCropOffsetY(0)
+        showToast('Tải ảnh thành công!')
+      } catch(err) {
+        if (!handleAuthError(err)) {
+          showToast('Lỗi tải ảnh: ' + (err.response?.data?.error || err.message), 'error')
+        }
+      } finally {
+        setUploading(false)
       }
-    } finally {
-      setUploading(false)
+    }, 'image/jpeg', 0.9)
+  }
+
+  function handleCanvasMouseDown(e) {
+    if (!cropImage) return
+    setIsDraggingCrop(true)
+    setDragStartX(e.clientX)
+    setDragStartY(e.clientY)
+  }
+
+  function handleCanvasMouseMove(e) {
+    if (!isDraggingCrop || !cropImage || !cropCanvasRef.current) return
+    
+    const deltaX = e.clientX - dragStartX
+    const deltaY = e.clientY - dragStartY
+    
+    const img = new Image()
+    img.onload = () => {
+      const size = Math.min(img.width, img.height)
+      const maxOffsetX = img.width - size
+      const maxOffsetY = img.height - size
+      
+      // Clamp offsets within image bounds
+      const newOffsetX = Math.max(0, Math.min(cropOffsetX - deltaX, maxOffsetX))
+      const newOffsetY = Math.max(0, Math.min(cropOffsetY - deltaY, maxOffsetY))
+      
+      setCropOffsetX(newOffsetX)
+      setCropOffsetY(newOffsetY)
+      setDragStartX(e.clientX)
+      setDragStartY(e.clientY)
     }
+    img.src = cropImage
+  }
+
+  function handleCanvasMouseUp() {
+    setIsDraggingCrop(false)
   }
 
   async function saveProduct(e) {
     e.preventDefault()
+    const errors = {}
+    
+    // Validate required fields
+    if (!productForm.name || !productForm.name.trim()) {
+      errors.name = 'Vui lòng nhập tên sản phẩm'
+    }
+    if (!productForm.price || productForm.price <= 0) {
+      errors.price = 'Vui lòng nhập giá sản phẩm (lớn hơn 0)'
+    }
+    if (!productForm.image && gallery.length === 0) {
+      errors.image = 'Vui lòng chọn ảnh đại diện'
+    }
+    
+    // If there are errors, display them and scroll to first error
+    if (Object.keys(errors).length > 0) {
+      setProductFormErrors(errors)
+      productFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      showToast('Vui lòng điền đầy đủ thông tin', 'error')
+      return
+    }
+    
+    setProductFormErrors({})
+    
     const weightNormalized = (() => {
       if (productForm.weight === null || productForm.weight === undefined || productForm.weight === '') return null
       const cleaned = String(productForm.weight).replace(',', '.').replace(/[^0-9.]/g, '')
@@ -326,14 +460,6 @@ export default function Admin(){
     if (!payload.image && gallery.length) {
       payload.image = gallery[0]
       setProductForm(prev => ({ ...prev, image: gallery[0] }))
-    }
-    if (!payload.image) {
-      showToast('Vui lòng chọn ảnh đại diện', 'error')
-      return
-    }
-    if (!payload.name || !payload.price) {
-      showToast('Vui lòng điền đầy đủ thông tin', 'error')
-      return
     }
 
     try {
@@ -576,25 +702,35 @@ export default function Admin(){
 
   async function saveOrder(e) {
     e.preventDefault()
+    const errors = {}
     
-    if (!orderForm.customer_name || !orderForm.customer_phone) {
-      showToast('Vui lòng điền tên và SĐT khách', 'error')
+    // Validate required fields
+    if (!orderForm.customer_name || !orderForm.customer_name.trim()) {
+      errors.customer_name = 'Vui lòng nhập tên khách hàng'
+    }
+    if (!orderForm.customer_phone || !orderForm.customer_phone.trim()) {
+      errors.customer_phone = 'Vui lòng nhập số điện thoại'
+    }
+    if (orderItems.length === 0) {
+      errors.items = 'Vui lòng thêm ít nhất 1 sản phẩm vào đơn hàng'
+    }
+    
+    // If there are errors, display them and scroll to first error
+    if (Object.keys(errors).length > 0) {
+      setOrderFormErrors(errors)
+      orderFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      showToast('Vui lòng điền đầy đủ thông tin bắt buộc', 'error')
       return
     }
+    
+    setOrderFormErrors({})
     
     const compactItems = mergeSimilarItems(orderItems)
 
-    if (compactItems.length === 0) {
-      showToast('Vui lòng thêm ít nhất 1 sản phẩm', 'error')
-      return
-    }
-
-    setOrderItems(compactItems)
-
-    const subtotal = compactItems.reduce((sum, item) => sum + (item.price * item.qty), 0)
-    const total = subtotal + orderForm.shipping - orderForm.discount
-
     try {
+      const subtotal = compactItems.reduce((sum, item) => sum + (item.price * item.qty), 0)
+      const total = subtotal + orderForm.shipping - orderForm.discount
+
       if (editingOrderId) {
         await Api.adminUpdateOrder(token, editingOrderId, {
           customer_name: orderForm.customer_name,
@@ -606,7 +742,8 @@ export default function Admin(){
           discount: orderForm.discount,
           total,
           method: orderForm.method,
-          paid: orderForm.paid
+          paid: orderForm.paid,
+          extra_cost: orderForm.extra_cost || 0
         })
         showToast('Cập nhật đơn hàng thành công')
       } else {
@@ -621,7 +758,8 @@ export default function Admin(){
           total,
           method: orderForm.method,
           paid: orderForm.paid,
-          seller: orderForm.seller || 'Quang Tâm'
+          seller: orderForm.seller || 'Quang Tâm',
+          extra_cost: orderForm.extra_cost || 0
         })
         showToast('Tạo đơn hàng thành công')
       }
@@ -654,7 +792,8 @@ export default function Admin(){
       shipping: order.shipping || 0,
       discount: order.discount || 0,
       paid: !!order.paid,
-      seller: order.seller || 'Quang Tâm'
+      seller: order.seller || 'Quang Tâm',
+      extra_cost: order.extra_cost || 0
     })
     setOrderItems(mergeSimilarItems(order.items_json || []))
     setStep('add-order')
@@ -848,7 +987,7 @@ export default function Admin(){
             <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-blue-100 font-medium text-xs uppercase tracking-wide">Tổng SP</h3>
+                  <h3 className="text-blue-100 font-medium text-sm uppercase tracking-wide">Tổng SP</h3>
                   <p className="text-3xl font-bold mt-1">{stats.day?.totalProducts || products.length}</p>
                 </div>
                 <div className="text-4xl opacity-20">📦</div>
@@ -857,7 +996,7 @@ export default function Admin(){
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-orange-100 font-medium text-xs uppercase tracking-wide">Tổng Đơn Đã Đặt</h3>
+                  <h3 className="text-orange-100 font-medium text-sm uppercase tracking-wide">Tổng Đơn Đã Đặt</h3>
                   <p className="text-3xl font-bold mt-1">{stats.day?.totalOrders || orders.length}</p>
                 </div>
                 <div className="text-4xl opacity-20">🛒</div>
@@ -866,7 +1005,7 @@ export default function Admin(){
             <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-yellow-100 font-medium text-xs uppercase tracking-wide">Chưa Giao</h3>
+                  <h3 className="text-yellow-100 font-medium text-sm uppercase tracking-wide">Chưa Giao</h3>
                   <p className="text-3xl font-bold mt-1">{stats.day?.undeliveredOrders || 0}</p>
                 </div>
                 <div className="text-4xl opacity-20">📦</div>
@@ -875,7 +1014,7 @@ export default function Admin(){
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-purple-100 font-medium text-xs uppercase tracking-wide">Đã Giao Chưa TT</h3>
+                  <h3 className="text-purple-100 font-medium text-sm uppercase tracking-wide">Đã Giao Chưa TT</h3>
                   <p className="text-3xl font-bold mt-1">{stats.day?.unpaidDeliveredOrders || 0}</p>
                 </div>
                 <div className="text-4xl opacity-20">💰</div>
@@ -884,7 +1023,7 @@ export default function Admin(){
             <div className="bg-gradient-to-br from-red-500 to-red-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-red-100 font-medium text-xs uppercase tracking-wide">Đơn Bom</h3>
+                  <h3 className="text-red-100 font-medium text-sm uppercase tracking-wide">Đơn Bom</h3>
                   <p className="text-3xl font-bold mt-1">{stats.day?.bomOrders || 0}</p>
                 </div>
                 <div className="text-4xl opacity-20">💣</div>
@@ -1155,28 +1294,38 @@ export default function Admin(){
 
       {/* Add/Edit Product */}
       {(step === 'add-product' || step === 'edit-product') && (
-        <div className="max-w-2xl bg-white p-6 rounded shadow">
+        <div className="max-w-2xl bg-white p-6 rounded shadow" ref={productFormRef}>
           <h2 className="text-2xl font-semibold mb-6">{editingId ? 'Sửa Sản Phẩm' : 'Thêm Sản Phẩm Mới'}</h2>
-          <form onSubmit={saveProduct} className="space-y-4">
+          <form onSubmit={saveProduct} noValidate className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-gray-700 font-medium mb-1">Tên sản phẩm *</label>
+                <label className="block text-gray-700 font-medium mb-1">Tên sản phẩm <span className="text-red-600">*</span></label>
                 <input 
                   value={productForm.name} 
-                  onChange={e=>setProductForm({...productForm, name: e.target.value})}
-                  className="w-full p-2 border rounded"
-                  required
+                  onChange={e=>{setProductForm({...productForm, name: e.target.value}); setProductFormErrors({...productFormErrors, name: ''})}}
+                  className={`w-full p-2 border rounded ${productFormErrors.name ? 'border-red-500 ring-2 ring-red-200 bg-red-50' : ''}`}
                 />
+                {productFormErrors.name && (
+                  <div className="text-red-600 text-sm mt-1 flex items-start gap-1">
+                    <span className="text-lg">⚠️</span>
+                    <span>{productFormErrors.name}</span>
+                  </div>
+                )}
               </div>
               <div>
-                <label className="block text-gray-700 font-medium mb-1">Giá (₫) *</label>
+                <label className="block text-gray-700 font-medium mb-1">Giá (₫) <span className="text-red-600">*</span></label>
                 <input 
                   type="number" 
                   value={productForm.price} 
-                  onChange={e=>setProductForm({...productForm, price: parseInt(e.target.value) || 0})}
-                  className="w-full p-2 border rounded"
-                  required
+                  onChange={e=>{setProductForm({...productForm, price: parseInt(e.target.value) || 0}); setProductFormErrors({...productFormErrors, price: ''})}}
+                  className={`w-full p-2 border rounded ${productFormErrors.price ? 'border-red-500 ring-2 ring-red-200 bg-red-50' : ''}`}
                 />
+                {productFormErrors.price && (
+                  <div className="text-red-600 text-sm mt-1 flex items-start gap-1">
+                    <span className="text-lg">⚠️</span>
+                    <span>{productFormErrors.price}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1307,10 +1456,59 @@ export default function Admin(){
             </div>
 
             <div>
-              <label className="block text-gray-700 font-medium mb-1">Ảnh đại diện</label>
-              <div className="border-2 border-dashed border-gray-300 rounded p-4">
+              <label className="block text-gray-700 font-medium mb-1">Ảnh đại diện <span className="text-red-600">*</span></label>
+              
+              {/* Crop Tool Modal */}
+              {showCropTool && cropImage && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 mb-4">
+                  <div className="bg-white rounded shadow-lg max-w-2xl w-full p-6">
+                    <h3 className="text-lg font-bold mb-2">✏️ Chọn vùng ảnh đại diện (Hình Vuông)</h3>
+                    <p className="text-sm text-gray-600 mb-4">Kéo chuột trên ảnh để điều chỉnh vị trí cắt. Những đường lưới giúp bạn căn chỉnh ảnh tốt hơn.</p>
+                    
+                    <div className="mb-4 border rounded overflow-auto max-h-96 flex justify-center items-center bg-gray-100">
+                      <canvas 
+                        ref={cropCanvasRef}
+                        className="max-w-full cursor-move"
+                        style={{ maxHeight: '400px' }}
+                        onMouseDown={handleCanvasMouseDown}
+                        onMouseMove={handleCanvasMouseMove}
+                        onMouseUp={handleCanvasMouseUp}
+                        onMouseLeave={handleCanvasMouseUp}
+                      />
+                    </div>
+                    
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
+                      💡 Mẹo: Kéo chuột từ trái sang phải hoặc từ trên xuống dưới để điều chỉnh vị trí cắt
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleCropConfirm}
+                        disabled={uploading}
+                        className="flex-1 px-4 py-2 rounded text-white bg-green-600 hover:bg-green-700 font-medium disabled:bg-gray-400"
+                      >
+                        💾 {uploading ? 'Đang tải...' : 'Lưu & Tải lên'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowCropTool(false)
+                          setCropImage(null)
+                          setCropOffsetX(0)
+                          setCropOffsetY(0)
+                        }}
+                        disabled={uploading}
+                        className="flex-1 px-4 py-2 rounded text-white bg-gray-400 hover:bg-gray-500 disabled:bg-gray-300"
+                      >
+                        Hủy
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className={`border-2 border-dashed rounded p-4 ${productFormErrors.image ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}>
                 <div className="mb-3">
-                  <img src={imagePreview} alt="Preview" className="w-full h-40 object-cover rounded"/>
+                  <img src={imagePreview} alt="Preview" className="w-full aspect-square object-cover rounded"/>
                 </div>
                 <label className="block cursor-pointer">
                   <span className="bg-blue-500 text-white px-3 py-2 rounded inline-block hover:bg-blue-600 disabled:bg-gray-400">
@@ -1325,6 +1523,12 @@ export default function Admin(){
                   />
                 </label>
                 {uploadedFile && <p className="text-sm text-green-600 mt-2">✓ {uploadedFile}</p>}
+                {productFormErrors.image && (
+                  <div className="text-red-600 text-sm mt-2 flex items-start gap-1">
+                    <span className="text-lg">⚠️</span>
+                    <span>{productFormErrors.image}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1346,30 +1550,40 @@ export default function Admin(){
 
       {/* Add Order */}
       {step === 'add-order' && (
-        <div className="max-w-4xl bg-white p-6 rounded shadow">
+        <div className="max-w-4xl bg-white p-6 rounded shadow" ref={orderFormRef}>
           <h2 className="text-2xl font-semibold mb-6">Thêm Đơn Hàng Mới</h2>
-          <form onSubmit={saveOrder} className="space-y-6">
+          <form onSubmit={saveOrder} noValidate className="space-y-6">
             {/* Customer Info */}
             <div className="border-b pb-4">
               <h3 className="font-semibold text-gray-700 mb-3">Thông Tin Khách Hàng</h3>
               <div className="grid md:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-gray-700 font-medium mb-1">Tên khách *</label>
+                  <label className="block text-gray-700 font-medium mb-1">Tên khách <span className="text-red-600">*</span></label>
                   <input 
                     value={orderForm.customer_name}
-                    onChange={e=>setOrderForm({...orderForm, customer_name: e.target.value})}
-                    className="w-full p-2 border rounded"
-                    required
+                    onChange={e=>{setOrderForm({...orderForm, customer_name: e.target.value}); setOrderFormErrors({...orderFormErrors, customer_name: ''})}}
+                    className={`w-full p-2 border rounded ${orderFormErrors.customer_name ? 'border-red-500 ring-2 ring-red-200 bg-red-50' : ''}`}
                   />
+                  {orderFormErrors.customer_name && (
+                    <div className="text-red-600 text-sm mt-1 flex items-start gap-1">
+                      <span className="text-lg">⚠️</span>
+                      <span>{orderFormErrors.customer_name}</span>
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-gray-700 font-medium mb-1">Số điện thoại *</label>
+                  <label className="block text-gray-700 font-medium mb-1">Số điện thoại <span className="text-red-600">*</span></label>
                   <input 
                     value={orderForm.customer_phone}
-                    onChange={e=>setOrderForm({...orderForm, customer_phone: e.target.value})}
-                    className="w-full p-2 border rounded"
-                    required
+                    onChange={e=>{setOrderForm({...orderForm, customer_phone: e.target.value}); setOrderFormErrors({...orderFormErrors, customer_phone: ''})}}
+                    className={`w-full p-2 border rounded ${orderFormErrors.customer_phone ? 'border-red-500 ring-2 ring-red-200 bg-red-50' : ''}`}
                   />
+                  {orderFormErrors.customer_phone && (
+                    <div className="text-red-600 text-sm mt-1 flex items-start gap-1">
+                      <span className="text-lg">⚠️</span>
+                      <span>{orderFormErrors.customer_phone}</span>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-gray-700 font-medium mb-1">Địa chỉ</label>
@@ -1380,12 +1594,11 @@ export default function Admin(){
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-700 font-medium mb-1">Người bán *</label>
+                  <label className="block text-gray-700 font-medium mb-1">Người bán</label>
                   <select 
                     value={orderForm.seller}
                     onChange={e=>setOrderForm({...orderForm, seller: e.target.value})}
                     className="w-full p-2 border rounded"
-                    required
                   >
                     <option value="Quang Tâm">Quang Tâm</option>
                     <option value="Mẹ Hằng">Mẹ Hằng</option>
@@ -1395,9 +1608,9 @@ export default function Admin(){
             </div>
 
             {/* Order Items */}
-            <div className="border-b pb-4">
+            <div className={`border-b pb-4 ${orderFormErrors.items ? 'border-red-500' : ''}`}>
               <div className="flex justify-between items-center mb-3">
-                <h3 className="font-semibold text-gray-700">Danh Sách Sản Phẩm</h3>
+                <h3 className="font-semibold text-gray-700">Danh Sách Sản Phẩm <span className="text-red-600">*</span></h3>
                 <button 
                   type="button"
                   onClick={() => addOrderItem()}
@@ -1408,7 +1621,15 @@ export default function Admin(){
               </div>
 
               {orderItems.length === 0 ? (
-                <div className="text-gray-500 text-center py-4">Chưa có sản phẩm nào</div>
+                <div className={`text-center py-4 rounded ${orderFormErrors.items ? 'bg-red-50 border border-red-200' : 'bg-gray-50'}`}>
+                  <div className="text-gray-500">Chưa có sản phẩm nào</div>
+                  {orderFormErrors.items && (
+                    <div className="text-red-600 text-sm mt-2 flex items-center justify-center gap-1">
+                      <span className="text-lg">⚠️</span>
+                      <span>{orderFormErrors.items}</span>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-3">
                   {orderItems.map((item, i) => (
@@ -1506,6 +1727,17 @@ export default function Admin(){
                   />
                 </div>
                 <div>
+                  <label className="block text-gray-700 font-medium mb-1">Chi phí phát sinh (₫)</label>
+                  <input 
+                    type="number"
+                    value={orderForm.extra_cost || 0}
+                    onChange={e=>setOrderForm({...orderForm, extra_cost: parseInt(e.target.value) || 0})}
+                    className="w-full p-2 border rounded"
+                    placeholder="Không hiển thị cho khách"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">*Chỉ admin thấy</p>
+                </div>
+                <div>
                   <label className="flex items-center gap-2 text-gray-700 font-medium mt-6">
                     <input 
                       type="checkbox"
@@ -1571,44 +1803,66 @@ export default function Admin(){
             </div>
             
             {/* Filters */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-gray-50 p-4 rounded-lg">
-              <select 
-                value={filterOrderStatus}
-                onChange={e => setFilterOrderStatus(e.target.value)}
-                className="px-3 py-2 border rounded-lg bg-white"
-              >
-                <option value="all">📋 Tất cả trạng thái</option>
-                <option value="undelivered">⏳ Chưa giao</option>
-                <option value="delivered">✅ Đã giao</option>
-                <option value="tomorrow_delivery">📅 Giao ngày mai</option>
-                <option value="cancelled">❌ Đã hủy</option>
-                <option value="bom">💣 Bom</option>
-              </select>
-              
-              <select 
-                value={filterSeller}
-                onChange={e => setFilterSeller(e.target.value)}
-                className="px-3 py-2 border rounded-lg bg-white"
-              >
-                <option value="all">👤 Tất cả người bán</option>
-                <option value="Quang Tâm">Quang Tâm</option>
-                <option value="Mẹ Hằng">Mẹ Hằng</option>
-              </select>
-              
-              <input 
-                type="date"
-                value={filterOrderDate}
-                onChange={e => setFilterOrderDate(e.target.value)}
-                className="px-3 py-2 border rounded-lg bg-white"
-                placeholder="Lọc theo ngày"
-              />
-              
-              <button 
-                onClick={() => { setFilterOrderStatus('all'); setFilterOrderDate(''); setFilterSeller('all'); }}
-                className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-700 font-medium"
-              >
-                🔄 Xóa bộ lọc
-              </button>
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5 shadow-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">📋 Trạng thái</label>
+                  <select 
+                    value={filterOrderStatus}
+                    onChange={e => setFilterOrderStatus(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="all">Tất cả trạng thái</option>
+                    <option value="undelivered">⏳ Chưa giao</option>
+                    <option value="delivered">✅ Đã giao</option>
+                    <option value="tomorrow_delivery">📅 Giao ngày mai</option>
+                    <option value="cancelled">❌ Đã hủy</option>
+                    <option value="bom">💣 Bom</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">👤 Người bán</label>
+                  <select 
+                    value={filterSeller}
+                    onChange={e => setFilterSeller(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="all">Tất cả người bán</option>
+                    <option value="Quang Tâm">Quang Tâm</option>
+                    <option value="Mẹ Hằng">Mẹ Hằng</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">📅 Từ ngày</label>
+                  <input 
+                    type="date"
+                    value={filterOrderDateFrom}
+                    onChange={e => setFilterOrderDateFrom(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">📅 Đến ngày</label>
+                  <input 
+                    type="date"
+                    value={filterOrderDateTo}
+                    onChange={e => setFilterOrderDateTo(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                
+                <div className="flex items-end">
+                  <button 
+                    onClick={() => { setFilterOrderStatus('all'); setFilterOrderDateFrom(''); setFilterOrderDateTo(''); setFilterSeller('all'); }}
+                    className="w-full px-4 py-2.5 bg-gradient-to-r from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white rounded-lg font-semibold shadow-md transition-all transform hover:scale-105"
+                  >
+                    🔄 Xóa bộ lọc
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1778,6 +2032,26 @@ export default function Admin(){
                       {Number(selectedOrder.discount) > 0 && (
                         <p><span className="font-semibold">Giảm:</span> {Number(selectedOrder.discount).toLocaleString()}₫</p>
                       )}
+                      <div className="mt-2 pt-2 border-t border-orange-100">
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Chi phí phát sinh (admin):</label>
+                        <input 
+                          type="number"
+                          value={selectedOrder.extra_cost || 0}
+                          onChange={async (e) => {
+                            const newCost = Number(e.target.value) || 0
+                            try {
+                              await Api.adminUpdateOrder(token, selectedOrder.id, { extra_cost: newCost })
+                              setSelectedOrder({...selectedOrder, extra_cost: newCost})
+                              showToast('Cập nhật chi phí phát sinh')
+                              await loadStats(token)
+                            } catch(err) {
+                              showToast('Lỗi: ' + (err.response?.data?.error || err.message), 'error')
+                            }
+                          }}
+                          className="w-full px-2 py-1 border rounded text-sm"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">*Không hiển thị cho khách hàng</p>
+                      </div>
                     </div>
                     <div className="mt-3 pt-3 border-t border-orange-100 flex items-center justify-between">
                       <span className="font-semibold text-gray-700">Tổng:</span>
@@ -1832,7 +2106,7 @@ export default function Admin(){
               </div>
 
               {isEditingOrder ? (
-                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6" ref={invoiceEditFormRef}>
                   <h4 className="font-semibold text-lg mb-4 text-blue-900">✏️ Sửa Hóa Đơn</h4>
                   
                   <div className="bg-yellow-50 border border-yellow-300 rounded p-3 mb-4 text-sm">
@@ -2088,6 +2362,7 @@ export default function Admin(){
                       shipping: Number(selectedOrder.shipping) || 0,
                       discount: Number(selectedOrder.discount) || 0
                     })
+                    setTimeout(() => invoiceEditFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
                   }}
                   className="w-full px-4 py-2.5 rounded-lg text-white bg-gradient-to-r from-orange-500 to-orange-600 hover:to-orange-700 font-semibold shadow"
                 >
@@ -2104,6 +2379,7 @@ export default function Admin(){
                   onClick={() => {
                     setNewStatus(selectedOrder.status || 'undelivered')
                     setIsUpdatingStatus(true)
+                    setTimeout(() => statusUpdateFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
                   }}
                   className="w-full px-4 py-2.5 rounded-lg text-white bg-gradient-to-r from-purple-500 to-purple-600 hover:to-purple-700 font-semibold shadow"
                 >
@@ -2195,11 +2471,10 @@ export default function Admin(){
                   // Filter by seller
                   if (filterSeller !== 'all' && o.seller !== filterSeller) return false
                   
-                  // Filter by date
-                  if (filterOrderDate) {
-                    const orderDate = new Date(o.createdAt).toISOString().split('T')[0]
-                    if (orderDate !== filterOrderDate) return false
-                  }
+                  // Filter by date range
+                  const orderDate = new Date(o.createdAt).toISOString().split('T')[0]
+                  if (filterOrderDateFrom && orderDate < filterOrderDateFrom) return false
+                  if (filterOrderDateTo && orderDate > filterOrderDateTo) return false
                   
                   return true
                 })
@@ -2225,16 +2500,7 @@ export default function Admin(){
                       <tbody>
                         {filtered
                           .sort((a, b) => {
-                          const priority = {
-                            'tomorrow_delivery': 1,
-                            'delivered': 2,
-                            'undelivered': 3,
-                            'bom': 4,
-                            'cancelled': 5
-                          }
-                          const aPri = priority[a.status] || 3
-                          const bPri = priority[b.status] || 3
-                          if (aPri !== bPri) return aPri - bPri
+                          // Sort by createdAt (newest first)
                           return new Date(b.createdAt) - new Date(a.createdAt)
                         })
                           .map(o => (
@@ -2305,7 +2571,7 @@ export default function Admin(){
       {/* Status Update Modal */}
       {isUpdatingStatus && selectedOrder && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded shadow-lg max-w-md w-full p-6">
+          <div className="bg-white rounded shadow-lg max-w-md w-full p-6" ref={statusUpdateFormRef}>
             <h3 className="text-lg font-bold mb-4">Cập Nhật Trạng Thái Đơn Hàng</h3>
             <p className="text-sm text-gray-600 mb-4">Đơn hàng: <span className="font-mono font-bold">{selectedOrder.id}</span></p>
             

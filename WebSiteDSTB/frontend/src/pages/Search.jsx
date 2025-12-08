@@ -8,12 +8,28 @@ export default function Search() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
 
+  const normalize = (text = '') => text
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+  
+  const filterByQuery = (products, q) => {
+    const tokens = normalize(q).split(/\s+/).filter(Boolean)
+    if (!tokens.length) return products
+    const filtered = products.filter(p => {
+      const hay = normalize(`${p.name || ''} ${p.category || ''}`)
+      return tokens.every(t => hay.includes(t))
+    })
+    // Nếu lọc ra rỗng, trả lại kết quả gốc để không blank toàn bộ
+    return filtered.length ? filtered : products
+  }
+
   useEffect(() => {
     const searchProducts = async () => {
       setLoading(true)
       try {
         const results = await Api.products(query)
-        setItems(results)
+        setItems(filterByQuery(results, query))
       } catch (err) {
         console.error('Search error:', err)
         setItems([])
@@ -60,15 +76,15 @@ export default function Search() {
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {items.map((p) => {
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {items.map(p => {
             const oldPrice = Math.round(p.price * 1.18)
             return (
               <Link key={p.id} to={'/product/' + p.id} className="product-card group">
                 <div className="relative overflow-hidden">
                   <img
                     src={p.image || '/images/products/placeholder.jpg'}
-                    className="product-image h-56 w-full object-cover"
+                    className="product-image w-full aspect-square object-cover"
                     alt={p.name}
                   />
                   {p.promo_price && (
