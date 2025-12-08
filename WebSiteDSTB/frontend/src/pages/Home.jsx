@@ -11,21 +11,28 @@ export function ProductCard({ product, showSoldCount = true }) {
   const salePrice = product.promo_price || product.price
   const discountPercent = product.promo_price && product.promo_price < product.price ? Math.round((product.price - product.promo_price) / product.price * 100) : 0
   
+  const navigate = (path) => {
+    window.location.href = path
+  }
+
   return (
-    <Link to={'/product/'+product.id} className="product-card group">
+    <div 
+      className="product-card group cursor-pointer"
+      onClick={() => navigate('/product/' + product.id)}
+    >
       <div className="relative overflow-hidden rounded-lg">
         {(()=>{
           const fallbackMap = {'gác': '/images/products/trau_gac_bep.jpg','gac': '/images/products/trau_gac_bep.jpg','măng': '/images/products/mang_kho.jpg','mang': '/images/products/mang_kho.jpg'}
           if(!product.image){
             const name = (product.name || '').toLowerCase()
             for(const key of Object.keys(fallbackMap)){
-              if(name.includes(key)){return <img src={fallbackMap[key]} alt={product.name} className="product-image w-full h-56 object-cover" />}
+              if(name.includes(key)){return <img src={fallbackMap[key]} alt={product.name} className="product-image w-full aspect-square object-cover" />}
             }
-            return <div className="w-full h-56 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center"><span className="text-gray-400 text-4xl">📦</span></div>
+            return <div className="w-full aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center"><span className="text-gray-400 text-4xl">📦</span></div>
           }
           const img = (typeof product.image === 'string') ? product.image : ''
           const src = img.startsWith('http') || img.startsWith('/') ? img : `/images/products/${img}`
-          return <img src={src} alt={product.name} className="product-image w-full h-56 object-cover" />
+          return <img src={src} alt={product.name} className="product-image w-full aspect-square object-cover" />
         })()}
         {discountPercent > 0 && (
           <div className="absolute top-3 left-3 price-badge bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-full">
@@ -34,30 +41,51 @@ export function ProductCard({ product, showSoldCount = true }) {
         )}
       </div>
       <div className="p-4 flex flex-col flex-1">
-        <div className="text-xs text-orange-600 font-semibold uppercase tracking-wide mb-1">{product.category}</div>
+        <span 
+          onClick={(e) => {
+            e.stopPropagation()
+            navigate(`/category/${product.category}`)
+          }}
+          className="text-xs text-orange-600 font-semibold uppercase tracking-wide mb-1 hover:text-orange-700 transition-colors w-fit cursor-pointer"
+        >
+          {product.category}
+        </span>
         <h3 className="font-bold text-gray-800 line-clamp-2 mb-2 group-hover:text-green-700 transition-colors">{product.name}</h3>
         {showSoldCount && (
           <div className="text-xs text-gray-500 mb-1">Đã bán: <span className="font-semibold text-orange-600">{product.sold_count || 0}</span></div>
         )}
         <div className="mt-auto">
-          <div className="flex items-end justify-between">
-            <div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
               <div className="text-xl font-bold text-orange-600">{salePrice.toLocaleString()}₫</div>
               {discountPercent > 0 && (
                 <div className="text-xs text-gray-400 line-through">{oldPrice.toLocaleString()}₫</div>
               )}
             </div>
             <button 
-              onClick={(e) => { e.preventDefault(); window.location.href = '/product/'+product.id }} 
-              className="icon-circle bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800"
+              onClick={(e) => { 
+                e.preventDefault()
+                e.stopPropagation()
+                // Add to cart with quantity 1
+                const cart = JSON.parse(localStorage.getItem('tb_cart')||'[]')
+                const found = cart.find(x=>x.id===product.id)
+                if(found) found.qty += 1; else cart.push({id: product.id, qty: 1})
+                localStorage.setItem('tb_cart', JSON.stringify(cart))
+                
+                // Trigger cart update event with animation
+                window.dispatchEvent(new CustomEvent('cartUpdated', { detail: { animate: true } }))
+              }} 
+              className="flex items-center gap-1 bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800 hover:scale-105 transition-transform px-4 py-3 rounded-lg font-semibold text-sm whitespace-nowrap flex-shrink-0 min-h-[44px]"
               aria-label="Add to cart"
+              title="Thêm sản phẩm vào giỏ"
             >
-              🛒
+              <span className="text-lg">🛒</span>
+              <span className="hidden sm:inline">Thêm vào giỏ</span>
             </button>
           </div>
         </div>
       </div>
-    </Link>
+    </div>
   )
 }
 
@@ -77,7 +105,7 @@ export default function Home()
     { title: '', subtitle: '', image: '/images/bg-4.png', showText: false }
   ]
   const tetCategoryName = 'Tết Nguyên Đán'
-  const MAX_TOP = 12
+  const MAX_TOP = 10
   const MAX_TET = 12
   const MAX_PROMO = 8
   const timerRef = useRef(null)
@@ -208,7 +236,7 @@ export default function Home()
               </svg>
             </Link>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {hotPromo.map(p => <ProductCard key={p.id} product={p} showSoldCount={false} />)}
           </div>
         </section>
@@ -217,12 +245,12 @@ export default function Home()
       {/* Tet Products Section */}
       <section className="py-16 bg-gradient-to-br from-red-50 to-orange-50">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between mb-10 gap-4">
-            <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-800 flex items-center gap-2 md:gap-3 whitespace-nowrap">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-10">
+            <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-800 flex items-center gap-2 md:gap-3">
               <span className="text-3xl md:text-4xl">🎊</span>
-              <span className="whitespace-nowrap">Sản Phẩm Phục Vụ Tết</span>
+              <span>Sản Phẩm Phục Vụ Tết</span>
             </h2>
-            <Link to={`/category/${tetCategoryName}`} className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base whitespace-nowrap flex-shrink-0">
+            <Link to={`/category/${tetCategoryName}`} className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
               Xem tất cả
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -232,7 +260,7 @@ export default function Home()
           {tetProducts.length === 0 ? (
             <div className="text-center py-10 text-gray-600">Chưa có sản phẩm Tết được gắn nhãn.</div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {tetProducts.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
             </div>
           )}
@@ -247,7 +275,7 @@ export default function Home()
             Sản phẩm bán chạy nhất
           </h2>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {topSelling.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
         </div>
       </div>
@@ -269,7 +297,7 @@ export default function Home()
                   </svg>
                 </Link>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {categoryProducts[cat].map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
               </div>
             </div>

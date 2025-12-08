@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Api from '../services/api'
 import { PROVINCES, calculateShipping, canShipToProvince } from '../utils/provinces'
@@ -41,14 +41,14 @@ function CheckoutOrderSummary({ cart, discount, province }) {
     return <div className="text-gray-600">Đang tải...</div>
   }
 
-  const subtotal = items.reduce((s, it) => s + it.price * it.qty, 0)
-  const totalWeight = items.reduce((s, it) => s + (it.weight || 0) * it.qty, 0)
+  const subtotal = items.reduce((s, it) => it.qty > 0 ? s + it.price * it.qty : s, 0)
+  const totalWeight = items.reduce((s, it) => it.qty > 0 ? s + (it.weight || 0) * it.qty : s, 0)
   const shipping = calculateShipping(totalWeight, province || 'Hà Nội')
   const total = subtotal + shipping - Number(discount || 0)
 
   return (
     <div className="space-y-3">
-      {items.map((it) => (
+      {items.filter(it => it.qty > 0).map((it) => (
         <div key={it.id} className="flex justify-between items-center py-2 border-b">
           <div className="flex-1">
             <div className="font-medium">{it.name}</div>
@@ -96,6 +96,12 @@ export default function Checkout(){
   const [successMessage, setSuccessMessage] = useState('')
   const navigate = useNavigate()
   
+  // Add refs for scrolling to errors
+  const nameRef = useRef(null)
+  const phoneRef = useRef(null)
+  const addressRef = useRef(null)
+  const provinceRef = useRef(null)
+  
   useEffect(()=> {
     const c = JSON.parse(localStorage.getItem('tb_cart')||'[]')
     setCart(c)
@@ -130,6 +136,7 @@ export default function Checkout(){
     const trimmedName = name.trim()
     if (!trimmedName || /^\s+$/.test(name)) {
       setNameError('Vui lòng nhập họ tên')
+      nameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
     setNameError('')
@@ -138,6 +145,7 @@ export default function Checkout(){
     const phoneRegex = /(84|0[3|5|7|8|9])+([0-9]{8})\b/
     if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
       setPhoneError('Số điện thoại không hợp lệ. Vui lòng nhập số điện thoại Việt Nam (10 số, bắt đầu bằng 03, 05, 07, 08, 09 hoặc +84)')
+      phoneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
     setPhoneError('')
@@ -146,6 +154,7 @@ export default function Checkout(){
     const trimmedAddress = address.trim()
     if (!trimmedAddress || /^\s+$/.test(address)) {
       setAddressError('Vui lòng nhập địa chỉ giao hàng')
+      addressRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
     setAddressError('')
@@ -161,7 +170,7 @@ export default function Checkout(){
       if (cannotShip.length > 0) {
         const productNames = cannotShip.map(it => it.name).join(', ')
         setProvinceError(`Sản phẩm sau không giao được đến ${province}: ${productNames}. Vui lòng loại bỏ sản phẩm khỏi giỏ hàng.`)
-        window.scrollTo({ top: 0, behavior: 'smooth' })
+        provinceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         return
       }
     }
@@ -182,25 +191,31 @@ export default function Checkout(){
     localStorage.removeItem('tb_cart')
     localStorage.removeItem('tb_checkout_form')
     
-    // Show success message and scroll to top
+    // Scroll to top first
     window.scrollTo({ top: 0, behavior: 'smooth' })
+    
+    // Show success message
     setSuccessMessage('success')
     
-    // Redirect after showing message
+    // Redirect after showing message (10 seconds to give user time to read)
     setTimeout(() => {
       navigate('/invoice/'+res.id+'?tab=order')
-    }, 2000)
+    }, 10000)
   }
   return (
     <div className="container mx-auto p-4">
       {successMessage === 'success' && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-40">
+        <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black bg-opacity-40 pt-20">
           <div className="bg-white rounded-2xl shadow-2xl p-8 mx-4 max-w-md w-full text-center transform animate-scale-in">
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <span className="text-5xl text-green-600">✓</span>
             </div>
             <h3 className="text-2xl font-bold text-gray-800 mb-2">Đặt hàng thành công!</h3>
-            <p className="text-gray-600 mb-4">Cảm ơn bạn đã đặt hàng. Vui lòng hoàn tất thanh toán để chúng tôi xử lý đơn hàng.</p>
+            <p className="text-gray-600 mb-4">
+              {method === 'BANK' 
+                ? 'Cảm ơn bạn đã đặt hàng. Vui lòng hoàn tất thanh toán để chúng tôi xử lý đơn hàng.'
+                : 'Cảm ơn bạn đã đặt hàng. Chúng tôi sẽ liên hệ với bạn sớm nhất để xác nhận đơn hàng.'}
+            </p>
             <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
               <div className="animate-spin w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full"></div>
               <span>Đang chuyển hướng...</span>
@@ -220,14 +235,14 @@ export default function Checkout(){
         </div>
       )}
       <h2 className="text-2xl font-semibold mb-4">Thanh toán</h2>
-      <form onSubmit={submit} className="grid md:grid-cols-2 gap-4">
+      <form onSubmit={submit} noValidate className="grid md:grid-cols-2 gap-4">
         <div className="p-4 bg-white rounded shadow">
           <label className="block text-gray-700 font-semibold mb-2">Họ tên <span className="text-red-600">*</span></label>
           <input 
-            required 
+            ref={nameRef}
             value={name} 
             onChange={e=>{setName(e.target.value); setNameError('')}} 
-            className={`w-full p-2 border rounded my-1 ${nameError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
+            className={`w-full p-3 border rounded my-1 ${nameError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
           />
           {nameError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-2 flex items-start gap-2">
@@ -240,10 +255,10 @@ export default function Checkout(){
           
           <label className="block text-gray-700 font-semibold mb-2 mt-4">Số điện thoại <span className="text-red-600">*</span></label>
           <input 
-            required 
+            ref={phoneRef}
             value={phone} 
             onChange={e=>{setPhone(e.target.value); setPhoneError('')}} 
-            className={`w-full p-2 border rounded my-1 ${phoneError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
+            className={`w-full p-3 border rounded my-1 ${phoneError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
           />
           {phoneError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-2 flex items-start gap-2">
@@ -256,10 +271,10 @@ export default function Checkout(){
           
           <label className="block text-gray-700 font-semibold mb-2 mt-4">Địa chỉ <span className="text-red-600">*</span></label>
           <textarea 
-            required 
+            ref={addressRef}
             value={address} 
             onChange={e=>{setAddress(e.target.value); setAddressError('')}} 
-            className={`w-full p-2 border rounded my-1 ${addressError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
+            className={`w-full p-3 border rounded my-1 ${addressError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
             placeholder="Số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành phố"
           />
           {addressError && (
@@ -273,10 +288,10 @@ export default function Checkout(){
           
           <label className="block text-gray-700 font-semibold mb-2 mt-4">Tỉnh/Thành phố <span className="text-red-600">*</span></label>
           <select 
-            required
+            ref={provinceRef}
             value={province} 
             onChange={e=>{setProvince(e.target.value); setProvinceError('')}} 
-            className={`w-full p-2 border rounded my-1 ${provinceError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
+            className={`w-full p-3 border rounded my-1 ${provinceError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
           >
             {PROVINCES.map(p => (
               <option key={p} value={p}>{p}</option>
@@ -306,11 +321,14 @@ export default function Checkout(){
               <div className="bg-orange-50 rounded-lg p-3 border-l-2 border-orange-400">
                 <div className="font-semibold text-orange-800 mb-1">▸ Nội thành Hà Nội</div>
                 <div className="text-gray-700">
-                  Giao hàng nhanh trong ngày, phí ship <span className="font-bold text-orange-600">Từ 30.000đ/đơn</span>
+                  Giao hàng từ 3-5 ngày, phí ship <span className="font-bold text-orange-600">Từ 30.000đ/đơn</span>
                 </div>
               </div>
               <div className="bg-blue-50 rounded-lg p-3 border-l-2 border-blue-400">
                 <div className="font-semibold text-blue-800 mb-1">▸ Giao hàng liên tỉnh</div>
+                <div className="text-gray-700 mb-1">
+                  Giao hàng từ <span className="font-semibold">5-7 ngày</span> với chi tiết phí ship:
+                </div>
                 <div className="text-gray-700">
                   • Đơn hàng ≤ 5kg: <span className="font-bold text-blue-600">35.000đ</span><br/>
                   • Đơn hàng &gt; 5kg: <span className="font-bold text-blue-600">7.000đ/kg</span>

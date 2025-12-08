@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { v4: uuidv4 } = require('uuid');
+const { sendTelegramNotification } = require('../telegram');
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { customer, items, subtotal, shipping, discount, total, method } = req.body;
   if (!customer || !items) return res.status(400).json({ error: 'Missing' });
   const id = 'TB' + Date.now();
@@ -20,12 +21,43 @@ router.post('/', (req, res) => {
     updateSold.run(item.qty || 1, item.id);
   });
   
+  // Send Telegram notification (async, don't wait for it)
+  sendTelegramNotification(id, customer, items, total, method).catch(err => {
+    console.error('Telegram notification failed:', err);
+  });
+  
   res.json({ id, invoiceUrl: `/invoice/${id}` });
 });
 
 router.get('/', (req, res) => {
   const rows = db.prepare('SELECT id, createdAt, customer_name, customer_phone, subtotal, shipping, discount, total, method, paid FROM orders ORDER BY createdAt DESC').all();
   res.json(rows);
+});
+
+// Lookup orders by phone number - MUST be before /:id route
+router.get('/lookup/:phone', (req, res) => {
+  try {
+    const phone = req.params.phone.replace(/\s/g, '');
+    const rows = db.prepare('SELECT * FROM orders WHERE customer_phone LIKE ? ORDER BY createdAt DESC').all(`%${phone}%`);
+    const orders = rows.map(row => {
+      try {
+        return {
+          ...row,
+          items: JSON.parse(row.items_json || '[]')
+        };
+      } catch (e) {
+        console.error('Error parsing items_json for order', row.id, e);
+        return {
+          ...row,
+          items: []
+        };
+      }
+    });
+    res.json(orders);
+  } catch (error) {
+    console.error('Error in lookup:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 router.get('/:id', (req, res) => {

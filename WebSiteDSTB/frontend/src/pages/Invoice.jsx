@@ -152,14 +152,14 @@ export default function Invoice(){
                 <img 
                   src="/images/qr.jpg" 
                   alt="QR chuyển khoản" 
-                  className="w-64 h-64 object-cover object-top rounded-lg"
+                  className="w-48 h-48 sm:w-64 sm:h-64 object-cover object-top rounded-lg"
                   style={{ objectPosition: 'center top' }}
                 />
               </div>
               
               {/* Thông tin chuyển khoản */}
               <div className="text-center space-y-3 max-w-md">
-                <p className="text-blue-900 font-medium">Vui lòng chuyển khoản và ghi rõ mã đơn:</p>
+                <p className="text-blue-900 font-medium">Vui lòng nhập mã đơn này vào ô nội dung khi chuyển khoản!</p>
                 
                 <div className="flex items-center justify-center gap-2 bg-white border-2 border-blue-300 rounded-lg px-4 py-3 shadow-sm">
                   <span className="font-mono font-bold text-blue-800 text-lg">{order.id}</span>
@@ -182,22 +182,17 @@ export default function Invoice(){
                   </div>
                 )}
                 
-                <div className="bg-white rounded-lg p-4 border border-blue-200 text-sm text-gray-700 leading-relaxed">
-                  <p className="mb-2">💡 <strong>Lưu ý:</strong></p>
+                <div className="bg-white rounded-lg p-4 border border-blue-200 text-sm text-gray-700 leading-relaxed text-left">
+                  <p className="mb-2 text-center">💡 <strong>Lưu ý:</strong></p>
                   <p>Sau khi thanh toán thành công, chúng tôi sẽ gửi tin nhắn xác nhận tới số điện thoại <strong>{order.customer_phone}</strong> của bạn.</p>
+                  <p className="mt-3">Nếu có bất kỳ thắc mắc hoặc cần thay đổi thông tin đơn hàng, vui lòng liên hệ:</p>
+                  <p className="mt-1">📞 Hotline: <strong>098.994.8583</strong></p>
+                  <p>💬 Zalo: <strong>098.994.8583</strong> (hoặc click vào biểu tượng Zalo ở góc dưới bên phải)</p>
                 </div>
               </div>
             </div>
           </div>
         )}
-
-        {/* Customer Note - không hiển thị khi tải ảnh */}
-        <div className="mt-6 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-sm text-gray-700 no-print">
-          <p className="font-medium mb-1">📝 Lưu ý quan trọng:</p>
-          <p>Nếu quý khách có bất kỳ thắc mắc hoặc cần thay đổi thông tin đơn hàng, vui lòng liên hệ qua:</p>
-          <p className="mt-2">📞 Hotline: <strong>098.994.8583</strong></p>
-          <p>💬 Zalo: <strong>098.994.8583</strong> (hoặc chọn biểu tượng Zalo ở góc phải màn hình)</p>
-        </div>
       </div>
 
       <style>{`

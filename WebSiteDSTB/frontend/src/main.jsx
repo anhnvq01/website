@@ -13,6 +13,8 @@ import Admin from './pages/Admin'
 import Info from './pages/Info'
 import Search from './pages/Search'
 import Promo from './pages/Promo'
+import OrderGuide from './pages/OrderGuide'
+import OrderLookup from './pages/OrderLookup'
 
 function SearchBox() {
   const [query, setQuery] = useState('')
@@ -47,30 +49,113 @@ function SearchBox() {
 
 function CartIcon() {
   const [count, setCount] = useState(0)
+  const [cartItems, setCartItems] = useState([])
+  const [products, setProducts] = useState({})
+  const [showPreview, setShowPreview] = useState(false)
+  const [animate, setAnimate] = useState(false)
   
   useEffect(() => {
-    const updateCount = () => {
+    const updateCart = async (event) => {
       const cart = JSON.parse(localStorage.getItem('tb_cart') || '[]')
-      const totalItems = cart.reduce((sum, item) => sum + (item.qty || 0), 0)
+      const totalItems = cart.filter(item => item.qty > 0).length
       setCount(totalItems)
+      setCartItems(cart)
+      
+      // Trigger animation if event has animate flag
+      if (event?.detail?.animate) {
+        setAnimate(true)
+        setTimeout(() => setAnimate(false), 600)
+      }
+      
+      // Load product details for preview
+      const productData = {}
+      for (const item of cart) {
+        try {
+          const product = await Api.product(item.id)
+          productData[item.id] = product
+        } catch(err) {
+          console.error('Failed to load product', item.id, err)
+        }
+      }
+      if (Object.keys(productData).length > 0) {
+        setProducts(prev => ({ ...prev, ...productData }))
+      }
     }
     
-    updateCount()
+    updateCart()
     // Listen for cart updates
-    window.addEventListener('cartUpdated', updateCount)
-    const interval = setInterval(updateCount, 1000)
+    window.addEventListener('cartUpdated', updateCart)
+    const interval = setInterval(updateCart, 1000)
     
     return () => {
-      window.removeEventListener('cartUpdated', updateCount)
+      window.removeEventListener('cartUpdated', updateCart)
       clearInterval(interval)
     }
   }, [])
   
+  const subtotal = cartItems.reduce((s, item) => {
+    if (item.qty <= 0) return s
+    const product = products[item.id]
+    const price = product ? (product.promo_price || product.price) : 0
+    return s + price * item.qty
+  }, 0)
+
+  const totalQty = cartItems.filter(item => item.qty > 0).reduce((sum, item) => sum + item.qty, 0)
+  
   return (
-    <Link to="/cart" className="icon-btn relative" title="Giỏ hàng">
-      🛒
-      {count > 0 && <span className="count">{count}</span>}
-    </Link>
+    <div className="relative group">
+      <Link to="/cart" className={`icon-btn relative ${animate ? 'animate-bounce-scale' : ''}`} title="Giỏ hàng">
+        🛒
+        {totalQty > 0 && <span className="count">{totalQty}</span>}
+      </Link>
+      
+      {/* Cart Preview Dropdown */}
+      {count > 0 && (
+        <div className="absolute right-0 top-full pt-2 w-80 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+          <div className="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 py-3 text-white">
+              <h3 className="font-bold text-lg">Giỏ Hàng ({totalQty} sản phẩm)</h3>
+            </div>
+            
+            {/* Cart Items */}
+            <div className="max-h-96 overflow-y-auto">
+              <div className="divide-y">
+                {cartItems.filter(item => item.qty > 0).map(item => {
+                  const product = products[item.id]
+                  const price = product ? (product.promo_price || product.price) : 0
+                  const image = product?.images?.[0] || product?.image || 'https://via.placeholder.com/60'
+                  
+                  return (
+                    <div key={item.id} className="p-3 hover:bg-gray-50 transition-colors">
+                      <div className="flex gap-3">
+                        <img src={image} alt={product?.name || ''} className="w-16 h-16 object-cover rounded" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm text-gray-800 truncate">{product?.name || 'Đang tải...'}</p>
+                          <p className="text-green-600 font-bold text-sm mt-1">{price.toLocaleString()}₫</p>
+                          <p className="text-gray-500 text-xs mt-1">Số lượng: <span className="font-bold text-gray-700">{item.qty}</span></p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            
+            {/* Footer */}
+            <div className="border-t bg-gray-50 p-4">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-gray-700 font-semibold">Tạm tính:</span>
+                <span className="text-green-600 font-bold text-lg">{subtotal.toLocaleString()}₫</span>
+              </div>
+              <Link to="/cart" className="block w-full bg-gradient-to-r from-green-600 to-green-700 text-white text-center py-2 rounded-lg font-bold hover:from-green-700 hover:to-green-800 transition-all shadow-md">
+                Xem Giỏ Hàng →
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -145,6 +230,7 @@ function App(){
   const [headerHeight, setHeaderHeight] = useState(0)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [categories, setCategories] = useState([])
+  const [productOpen, setProductOpen] = useState(false)
 
   // Track if token exists (don't auto-logout, let Admin page handle auth)
   useEffect(() => {
@@ -229,7 +315,7 @@ function App(){
         <div ref={headerRef} className="main-header" style={{ position: 'fixed', top: `${topbarHeight}px`, left:0, right:0, zIndex: 45 }}>
             <div className="container mx-auto flex items-center justify-between px-4 py-3 lg:py-4">
               <div className="flex items-center gap-4 lg:gap-8 flex-1 min-w-0">
-                <button className="lg:hidden p-2 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0" onClick={()=>setMobileOpen(v=>!v)} aria-label="Menu">
+                <button className="xl:hidden p-2 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0" onClick={()=>setMobileOpen(v=>!v)} aria-label="Menu">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-6 h-6 text-green-800">
                     <path fill="currentColor" d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z" />
                   </svg>
@@ -237,30 +323,38 @@ function App(){
                 <Link to="/" className="logo">Đặc Sản Sạch Tây Bắc</Link>
                 
                 {/* Main navigation next to logo - desktop only */}
-                <nav className="hidden lg:flex gap-4 xl:gap-6 items-center">
+                <nav className="hidden xl:flex gap-4 xl:gap-6 items-center">
                   <Link to="/" className="nav-link whitespace-nowrap">Trang Chủ</Link>
                   <Link to="/info" className="nav-link whitespace-nowrap">Giới Thiệu</Link>
-                  <Link to="/promo" className="nav-link whitespace-nowrap">Khuyến mãi HOT</Link>
-                  <div className="relative group">
-                    <button className="nav-link flex items-center gap-1 whitespace-nowrap">
-                      Sản phẩm
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    <div className="absolute left-0 top-full pt-2 w-56 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                      <div className="bg-white rounded-md shadow-lg py-1">
-                        {categories.map(cat => (
-                          <Link key={cat} to={`/category/${cat}`} className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-700">{cat}</Link>
-                        ))}
-                      </div>
+                </nav>
+                
+                {/* Products dropdown - only on xl screens */}
+                <div 
+                  className="hidden xl:block relative"
+                  onMouseEnter={() => setProductOpen(true)}
+                  onMouseLeave={() => setProductOpen(false)}
+                >
+                  <button className="nav-link flex items-center gap-1 whitespace-nowrap">
+                    Sản phẩm
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  <div className={`absolute left-0 top-full mt-2 min-w-[240px] max-w-xs transition-all duration-200 z-[9999] ${productOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+                    <div className="bg-white rounded-md shadow-2xl py-1 border border-gray-100">
+                      {categories.map(cat => (
+                        <Link key={cat} to={`/category/${cat}`} className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-700">{cat}</Link>
+                      ))}
                     </div>
                   </div>
-                </nav>
+                </div>
+                
+                {/* Tra Cứu Đơn Hàng after Products dropdown */}
+                <Link to="/order-lookup" className="hidden xl:block nav-link whitespace-nowrap">Tra Cứu Đơn Hàng</Link>
               </div>
 
-              <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 flex-shrink-0">
-                <div className="hidden lg:block w-64">
+              <div className="flex items-center gap-2 sm:gap-3 xl:gap-4 flex-shrink-0">
+                <div className="hidden xl:block w-64">
                   <SearchBox />
                 </div>
                 {isLoggedIn && (
@@ -274,11 +368,10 @@ function App(){
 
           {/* Mobile menu */}
           {mobileOpen && (
-            <div className="lg:hidden bg-white border-t shadow-md">
+            <div className="xl:hidden bg-white border-t shadow-md">
               <div className="px-4 py-3">
-                <Link to="/" className="block py-2 border-b" onClick={()=>setMobileOpen(false)}>Trang Chủ</Link>
-                <Link to="/info" className="block py-2 border-b" onClick={()=>setMobileOpen(false)}>Giới Thiệu</Link>
-                <Link to="/promo" className="block py-2 border-b" onClick={()=>setMobileOpen(false)}>Khuyến mãi HOT</Link>
+                <Link to="/" className="block py-2 border-b" onClick={()=>setMobileOpen(false)}>Trang chủ</Link>
+                <Link to="/info" className="block py-2 border-b" onClick={()=>setMobileOpen(false)}>Giới thiệu</Link>
                 <div className="py-2 border-b">
                   <button 
                     className="w-full text-left font-semibold text-gray-700 flex items-center justify-between"
@@ -297,6 +390,7 @@ function App(){
                     ))}
                   </div>
                 </div>
+                <Link to="/order-lookup" className="block py-2 border-b" onClick={()=>setMobileOpen(false)}>Tra Cứu Đơn Hàng</Link>
                 {isLoggedIn && (
                   <Link to="/admin" className="block py-2 border-b text-green-700 font-semibold" onClick={()=>setMobileOpen(false)}>
                     ⚙️ Trang quản trị
@@ -326,7 +420,7 @@ function App(){
           )}
           
           {/* Search box below header on mobile */}
-          <div className="lg:hidden bg-white border-t px-4 py-2">
+          <div className="xl:hidden bg-white border-t px-4 py-2">
             <SearchBox />
           </div>
         </div>
@@ -339,8 +433,10 @@ function App(){
               <Route path="/cart" element={<Cart/>} />
               <Route path="/checkout" element={<Checkout/>} />
               <Route path="/invoice/:id" element={<Invoice/>} />
+              <Route path="/order-lookup" element={<OrderLookup/>} />
               <Route path="/admin" element={<Admin/>} />
               <Route path="/info" element={<Info/>} />
+              <Route path="/order-guide" element={<OrderGuide/>} />
               <Route path="/promo" element={<Promo/>} />
               <Route path="/search" element={<Search/>} />
             </Routes>
@@ -349,9 +445,9 @@ function App(){
 
         <ScrollToTop />
 
-        <footer className="bg-white pt-12 pb-6 border-t">
+        <footer className="bg-white pt-4 pb-6 border-t">
           <div className="container mx-auto px-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
               {/* Brand info */}
               <div>
                 <h3 className="text-xl font-bold text-orange-600 mb-3">🦕 Đặc Sản Sạch Tây Bắc</h3>
@@ -401,4 +497,8 @@ function App(){
   )
 }
 
-createRoot(document.getElementById('root')).render(<App />)
+const rootElement = document.getElementById('root')
+if (!rootElement._reactRoot) {
+  rootElement._reactRoot = createRoot(rootElement)
+}
+rootElement._reactRoot.render(<App />)

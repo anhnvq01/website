@@ -1,0 +1,17 @@
+/* Fix dropdown being hidden by header overflow */
+.main-header {
+  overflow: visible !important;
+}
+
+.main-header > div {
+  overflow: visible !important;
+}
+
+/* Ensure dropdown sits above everything */
+.main-header .group > div {
+  overflow: visible !important;
+}
+
+.main-header nav {
+  overflow: visible !important;
+}
