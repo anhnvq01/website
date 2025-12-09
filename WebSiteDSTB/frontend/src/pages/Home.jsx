@@ -99,9 +99,9 @@ export default function Home()
   const [categoryList, setCategoryList] = useState([])
   const [slide, setSlide] = useState(0)
   const slides = [
-    { title: 'Cùng Đặc Sản Sạch Tây Bắc', subtitle: 'Khám phá hương vị núi rừng', image: '/images/bg-1.jpg', showText: true },
-    { title: 'Sản phẩm chất lượng cao', subtitle: 'Rau rừng - Thịt gác bếp - Rượu vùng cao', image: '/images/bg-2.jpg', showText: true },
-    { title: 'Ưu đãi mỗi ngày', subtitle: 'Giảm giá, combo & quà tặng', image: '/images/bg-3.jpg', showText: true },
+    { title: 'Cùng Đặc Sản Sạch Tây Bắc', subtitle: 'Khám phá hương vị núi rừng', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765267677/taybac/i23j5dgeyktidv9tbvup.jpg', showText: true },
+    { title: 'Sản phẩm chất lượng cao', subtitle: 'Rau rừng - Thịt gác bếp - Rượu vùng cao', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765267679/taybac/ilork8jhjfafjzxr0w27.jpg', showText: true },
+    { title: 'Ưu đãi mỗi ngày', subtitle: 'Giảm giá, combo & quà tặng', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765267680/taybac/yna9syfiwfrcu8yn0bqz.jpg', showText: true },
     { title: '', subtitle: '', image: '/images/bg-4.png', showText: false }
   ]
   const tetCategoryName = 'Tết Nguyên Đán'
@@ -247,8 +247,8 @@ export default function Home()
         <div className="container mx-auto px-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-10">
             <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-800 flex items-center gap-2 md:gap-3">
-              <span className="text-3xl md:text-4xl">🎊</span>
-              <span>Sản Phẩm Phục Vụ Tết</span>
+              <span className="text-3xl md:text-4xl">🎉</span>
+              <span>Sản phẩm phục vụ Tết</span>
             </h2>
             <Link to={`/category/${tetCategoryName}`} className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
               Xem tất cả
@@ -342,7 +342,7 @@ export default function Home()
           <div className="flex items-center justify-between mb-10">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-3">
               <span className="text-4xl">🏷️</span>
-              Danh Mục Sản Phẩm
+              Danh mục sản phẩm
             </h2>
             <Link to="#" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1">
               Xem tất cả

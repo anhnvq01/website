@@ -114,7 +114,7 @@ export default function Cart(){
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-800 mb-1">🛒 Giỏ Hàng Của Bạn</h1>
-          <p className="text-gray-600 text-sm">Bạn có <span className="font-bold text-green-600">{items.filter(it => it.qty > 0).length}</span> sản phẩm trong giỏ</p>
+          <p className="text-gray-600 text-sm">Bạn có <span className="font-bold text-green-600">{items.filter(it => it.qty > 0).reduce((sum, it) => sum + it.qty, 0)}</span> sản phẩm trong giỏ</p>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
@@ -227,7 +227,7 @@ export default function Cart(){
 
                 <div className="pt-3 border-t border-gray-200">
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Số sản phẩm:</span>
+                    <span className="text-gray-600">Tổng số sản phẩm:</span>
                     <span className="font-bold text-gray-900">
                       {items.filter(it => it.qty > 0).reduce((sum, it) => sum + it.qty, 0)} sản phẩm
                     </span>

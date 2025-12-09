@@ -150,7 +150,7 @@ export default function Invoice(){
               {/* QR Code - Căn giữa và to hơn */}
               <div className="bg-white p-4 rounded-xl shadow-md">
                 <img 
-                  src="/images/qr.jpg" 
+                  src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765269709/taybac/vfuckkoitri3zyxlffcl.jpg" 
                   alt="QR chuyển khoản" 
                   className="w-48 h-48 sm:w-64 sm:h-64 object-cover object-top rounded-lg"
                   style={{ objectPosition: 'center top' }}

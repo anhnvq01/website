@@ -8,6 +8,20 @@ export default function Search() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
 
+  const addToCart = (product, e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const cart = JSON.parse(localStorage.getItem('tb_cart') || '[]')
+    const existing = cart.find(item => item.id === product.id)
+    if (existing) {
+      existing.qty += 1
+    } else {
+      cart.push({ id: product.id, qty: 1 })
+    }
+    localStorage.setItem('tb_cart', JSON.stringify(cart))
+    window.dispatchEvent(new CustomEvent('cartUpdated', { detail: { animate: true } }))
+  }
+
   const normalize = (text = '') => text
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
@@ -78,45 +92,63 @@ export default function Search() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {items.map(p => {
-            const oldPrice = Math.round(p.price * 1.18)
+            const discountPercent = p.promo_price && p.promo_price < p.price ? Math.round((p.price - p.promo_price) / p.price * 100) : 0
             return (
-              <Link key={p.id} to={'/product/' + p.id} className="product-card group">
-                <div className="relative overflow-hidden">
+              <div 
+                key={p.id}
+                className="product-card group cursor-pointer"
+                onClick={() => window.location.href = '/product/' + p.id}
+              >
+                <div className="relative overflow-hidden rounded-lg">
                   <img
                     src={p.image || '/images/products/placeholder.jpg'}
                     className="product-image w-full aspect-square object-cover"
                     alt={p.name}
                   />
-                  {p.promo_price && (
+                  {discountPercent > 0 && (
                     <div className="absolute top-3 left-3 price-badge bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-full">
-                      -{Math.round((1 - p.promo_price / p.price) * 100)}%
+                      -{discountPercent}%
                     </div>
                   )}
                 </div>
-                <div className="p-4">
-                  <div className="text-xs text-orange-600 font-semibold uppercase tracking-wide mb-1">
+                <div className="p-4 flex flex-col flex-1">
+                  <span 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      window.location.href = `/category/${p.category}`
+                    }}
+                    className="text-xs text-orange-600 font-semibold uppercase tracking-wide mb-1 hover:text-orange-700 transition-colors w-fit cursor-pointer"
+                  >
                     {p.category}
-                  </div>
+                  </span>
                   <h3 className="font-bold text-gray-800 line-clamp-2 mb-2 group-hover:text-green-700 transition-colors">
                     {p.name}
                   </h3>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xl font-bold text-orange-600">
-                        {(p.promo_price || p.price).toLocaleString()}₫
-                      </div>
-                      {p.promo_price && (
-                        <div className="text-xs text-gray-400 line-through">
-                          {p.price.toLocaleString()}₫
+                  <div className="mt-auto">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="text-xl font-bold text-orange-600">
+                          {(p.promo_price || p.price).toLocaleString()}₫
                         </div>
-                      )}
+                        {discountPercent > 0 && (
+                          <div className="text-xs text-gray-400 line-through">
+                            {p.price.toLocaleString()}₫
+                          </div>
+                        )}
+                      </div>
+                      <button 
+                        onClick={(e) => addToCart(p, e)}
+                        className="flex items-center gap-1 bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800 hover:scale-105 transition-transform px-4 py-3 rounded-lg font-semibold text-sm whitespace-nowrap flex-shrink-0 min-h-[44px]"
+                        aria-label="Thêm vào giỏ"
+                        title="Thêm sản phẩm vào giỏ"
+                      >
+                        <span className="text-base">🛒</span>
+                        <span className="hidden sm:inline">Thêm vào giỏ</span>
+                      </button>
                     </div>
-                    <button className="icon-circle bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800">
-                      🛒
-                    </button>
                   </div>
                 </div>
-              </Link>
+              </div>
             )
           })}
         </div>

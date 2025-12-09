@@ -208,6 +208,18 @@ function ScrollToTop() {
       </button>
       
       <a
+        href="https://m.me/dacsansachtaybac"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-40 right-8 z-50 w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 animate-bounce flex items-center justify-center text-white"
+        aria-label="Chat Messenger"
+        title="Chat với chúng tôi qua Messenger"
+      >
+        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.912 1.446 5.51 3.707 7.197V22l3.475-1.908c.928.256 1.907.393 2.918.393 5.523 0 10-4.145 10-9.242C22 6.145 17.523 2 12 2zm.993 12.492l-2.548-2.718-4.973 2.718 5.467-5.799 2.61 2.718 4.911-2.718-5.467 5.799z"/>
+        </svg>
+      </a>
+      <a
         href="https://zalo.me/0989948583"
         target="_blank"
         rel="noopener noreferrer"
@@ -215,7 +227,7 @@ function ScrollToTop() {
         aria-label="Chat Zalo"
         title="Chat với chúng tôi qua Zalo"
       >
-        <img src="/images/zalo_icon.png" alt="Zalo" className="w-10 h-10 object-contain" />
+        <img src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765267771/taybac/x7kxl9hzzgfxruofoxoa.png" alt="Zalo" className="w-10 h-10 object-contain" />
       </a>
     </>
   )
@@ -335,7 +347,7 @@ function App(){
                   onMouseLeave={() => setProductOpen(false)}
                 >
                   <button className="nav-link flex items-center gap-1 whitespace-nowrap">
-                    Sản phẩm
+                    Sản Phẩm
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
@@ -349,7 +361,7 @@ function App(){
                   </div>
                 </div>
                 
-                {/* Tra Cứu Đơn Hàng after Products dropdown */}
+                {/* Tra Cứu Đơn Hàng after Products dropdown */} 
                 <Link to="/order-lookup" className="hidden xl:block nav-link whitespace-nowrap">Tra Cứu Đơn Hàng</Link>
               </div>
 
@@ -470,19 +482,21 @@ function App(){
                 <ul className="space-y-2 text-sm">
                   <li><a href="#" className="text-gray-600 hover:text-orange-600">Chính sách đổi trả</a></li>
                   <li><a href="#" className="text-gray-600 hover:text-orange-600">Chính sách vận chuyển</a></li>
-                  <li><a href="#" className="text-gray-600 hover:text-orange-600">Chính sách bảo mật</a></li>
-                  <li><a href="#" className="text-gray-600 hover:text-orange-600">Điều khoản sử dụng</a></li>
                 </ul>
               </div>
               <div>
-                <h4 className="font-semibold text-gray-800 mb-3">Kết nối</h4>
-                <p className="text-sm text-gray-600 mb-3">Theo dõi chúng tôi trên mạng xã hội</p>
+                <h4 className="font-semibold text-gray-800 mb-3">Liên hệ hỗ trợ</h4>
+                <p className="text-sm text-gray-600 mb-3">Hotline: <a href="tel:098.994.8583" className="text-orange-600 font-semibold">098.994.8583</a></p>
+                <p className="text-sm text-gray-600 mb-3">Hoặc liên hệ qua Messenger và Zalo</p>
                 <div className="flex gap-3">
                   <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition-colors" title="Facebook">
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                   </a>
                   <a href="https://zalo.me/0989948583" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center hover:shadow-lg transition-all" title="Zalo">
-                    <img src="/images/zalo_icon.png" alt="Zalo" className="w-8 h-8 object-contain" />
+                    <img src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765267771/taybac/x7kxl9hzzgfxruofoxoa.png" alt="Zalo" className="w-8 h-8 object-contain" />
+                  </a>
+                  <a href="https://m.me/dacsansachtaybac" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center hover:from-blue-600 hover:to-purple-700 transition-all" title="Messenger">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.912 1.446 5.51 3.707 7.197V22l3.475-1.908c.928.256 1.907.393 2.918.393 5.523 0 10-4.145 10-9.242C22 6.145 17.523 2 12 2zm.993 12.492l-2.548-2.718-4.973 2.718 5.467-5.799 2.61 2.718 4.911-2.718-5.467 5.799z"/></svg>
                   </a>
                 </div>
               </div>

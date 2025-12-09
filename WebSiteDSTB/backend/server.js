@@ -8,6 +8,8 @@ const db = require('./db');
 const products = require('./routes/products');
 const orders = require('./routes/orders');
 const admin = require('./routes/admin');
+const { v2: cloudinary } = require('cloudinary');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 const app = express();
 
@@ -26,16 +28,39 @@ app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
-// Multer configuration for image uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../frontend/public/images/products'));
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Cloudinary configuration
+const useCloudinary = process.env.CLOUDINARY_CLOUD_NAME && 
+                      process.env.CLOUDINARY_API_KEY && 
+                      process.env.CLOUDINARY_API_SECRET;
+
+if (useCloudinary) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+  });
+  console.log('☁️  Using Cloudinary for image storage');
+}
+
+// Multer storage configuration - tự động switch local/cloud
+const storage = useCloudinary
+  ? new CloudinaryStorage({
+      cloudinary: cloudinary,
+      params: {
+        folder: 'taybac-products',
+        allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+        transformation: [{ width: 2000, height: 2000, crop: 'limit', quality: 'auto' }]
+      }
+    })
+  : multer.diskStorage({
+      destination: (req, file, cb) => {
+        cb(null, path.join(__dirname, '../frontend/public/images/products'));
+      },
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+      }
+    });
 
 const upload = multer({
   storage: storage,
@@ -47,10 +72,14 @@ const upload = multer({
     if (mimetype && extname) {
       return cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only images are allowed.'));
+      cb(new Error('Chỉ cho phép upload file ảnh!'));
     }
   }
 });
+
+if (!useCloudinary) {
+  console.log('📁 Using local storage for images (dev mode)');
+}
 
 // Make upload middleware available to routes
 app.locals.upload = upload;

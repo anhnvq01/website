@@ -1,4 +1,8 @@
 // PM2 Configuration for production
+// Chạy: pm2 start ecosystem.config.js
+// Xem logs: pm2 logs
+// Restart: pm2 restart all
+
 module.exports = {
   apps: [{
     name: 'taybac-backend',
@@ -11,9 +15,14 @@ module.exports = {
       NODE_ENV: 'production',
       PORT: 4000
     },
-    error_file: './logs/err.log',
-    out_file: './logs/out.log',
-    log_file: './logs/combined.log',
-    time: true
+    error_file: './logs/backend-err.log',
+    out_file: './logs/backend-out.log',
+    log_file: './logs/backend-combined.log',
+    time: true,
+    // Auto restart nếu crash
+    min_uptime: '10s',
+    max_restarts: 10,
+    // Graceful shutdown
+    kill_timeout: 5000
   }]
 }
