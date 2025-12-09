@@ -145,6 +145,7 @@ export default function Admin(){
   const [filterOrderDateFrom, setFilterOrderDateFrom] = useState('')
   const [filterOrderDateTo, setFilterOrderDateTo] = useState('')
   const [filterSeller, setFilterSeller] = useState('all')
+  const [filterCustomerName, setFilterCustomerName] = useState('')
   const [orderForm, setOrderForm] = useState({
     customer_name: '',
     customer_phone: '',
@@ -291,6 +292,36 @@ export default function Admin(){
       showToast('Tải xuống CSDL thành công', 'success')
     } catch (e) {
       showToast('Lỗi tải xuống: ' + e.message, 'error')
+    }
+  }
+
+  // Export orders with status "Ngày mai giao" to Excel
+  async function exportNgayMaiGiao() {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
+      const response = await fetch(`${apiUrl}/admin/export-ngay-mai-giao`, {
+        headers: {
+          Authorization: 'Bearer ' + token
+        }
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Xuất file thất bại')
+      }
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `DonHang_NgayMaiGiao_${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      showToast('Xuất file Excel thành công', 'success')
+    } catch (e) {
+      showToast('Lỗi xuất file: ' + e.message, 'error')
     }
   }
 
@@ -943,36 +974,43 @@ export default function Admin(){
           onClick={() => { setStep('dashboard'); loadStats(token) }}
           className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'dashboard' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
         >
-          📊 Tổng Quan
+          📊 Tổng quan
         </button>
         
         <button 
           onClick={() => { setStep('products'); loadProducts(token) }}
           className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'products' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
         >
-          📦 Quản Lý Sản Phẩm
+          📦 Quản lý sản phẩm
         </button>
         <button 
           onClick={() => { setStep('orders'); loadOrders(token) }}
           className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'orders' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
         >
-          🛒 Quản Lý Đơn Hàng
+          🛒 Quản lý đơn hàng
         </button>
         <button 
           onClick={() => { setStep('categories'); loadCategories(token) }}
           className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'categories' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
         >
-          🏷️ Danh Mục
+          🏷️ Danh mục
         </button>
         <button 
           onClick={() => { setStep('admins'); loadAdmins(token) }}
           className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap ${step === 'admins' ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600'}`}
         >
-          👤 Tài Khoản
+          👤 Tài khoản
+        </button>
+        <button 
+          onClick={exportNgayMaiGiao}
+          className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap border-transparent text-gray-600 hover:text-green-600 ml-auto`}
+          title="Xuất đơn hàng Ngày mai giao ra Excel"
+        >
+          📊 Xuất đơn ngày mai giao
         </button>
         <button 
           onClick={downloadDatabase}
-          className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap border-transparent text-gray-600 hover:text-blue-600 ml-auto`}
+          className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap border-transparent text-gray-600 hover:text-blue-600`}
           title="Tải xuống bản sao lưu cơ sở dữ liệu"
         >
           💾 Tải CSDL
@@ -996,7 +1034,7 @@ export default function Admin(){
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-orange-100 font-medium text-sm uppercase tracking-wide">Tổng Đơn Đã Đặt</h3>
+                  <h3 className="text-orange-100 font-medium text-sm uppercase tracking-wide">Tổng đơn đã đặt</h3>
                   <p className="text-3xl font-bold mt-1">{stats.day?.totalOrders || orders.length}</p>
                 </div>
                 <div className="text-4xl opacity-20">🛒</div>
@@ -1005,7 +1043,7 @@ export default function Admin(){
             <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-yellow-100 font-medium text-sm uppercase tracking-wide">Chưa Giao</h3>
+                  <h3 className="text-yellow-100 font-medium text-sm uppercase tracking-wide">Chưa giao</h3>
                   <p className="text-3xl font-bold mt-1">{stats.day?.undeliveredOrders || 0}</p>
                 </div>
                 <div className="text-4xl opacity-20">📦</div>
@@ -1014,7 +1052,7 @@ export default function Admin(){
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-purple-100 font-medium text-sm uppercase tracking-wide">Đã Giao Chưa TT</h3>
+                  <h3 className="text-purple-100 font-medium text-sm uppercase tracking-wide">Đã giao chưa TT</h3>
                   <p className="text-3xl font-bold mt-1">{stats.day?.unpaidDeliveredOrders || 0}</p>
                 </div>
                 <div className="text-4xl opacity-20">💰</div>
@@ -1023,7 +1061,7 @@ export default function Admin(){
             <div className="bg-gradient-to-br from-red-500 to-red-600 p-4 rounded-xl shadow-lg text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-red-100 font-medium text-sm uppercase tracking-wide">Đơn Bom</h3>
+                  <h3 className="text-red-100 font-medium text-sm uppercase tracking-wide">Đơn bom</h3>
                   <p className="text-3xl font-bold mt-1">{stats.day?.bomOrders || 0}</p>
                 </div>
                 <div className="text-4xl opacity-20">💣</div>
@@ -1034,7 +1072,7 @@ export default function Admin(){
           {/* Revenue Charts - Quang Tâm */}
           <div className="bg-white p-8 rounded-xl shadow-lg border-t-4 border-orange-500">
             <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-              <span>👨‍💼</span> Quang Tâm - Doanh Thu & Lợi Nhuận
+              <span>👨‍💼</span> Quang Tâm - Doanh thu & Lợi nhuận
             </h3>
             <div className="grid lg:grid-cols-2 gap-8">
               {/* Chart */}
@@ -1804,7 +1842,17 @@ export default function Admin(){
             
             {/* Filters */}
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5 shadow-sm">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">👤 Tên khách</label>
+                  <input 
+                    type="text"
+                    value={filterCustomerName}
+                    onChange={e => setFilterCustomerName(e.target.value)}
+                    placeholder="Nhập tên khách..."
+                    className="w-full px-3 py-2.5 border border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-2">📋 Trạng thái</label>
                   <select 
@@ -1856,7 +1904,7 @@ export default function Admin(){
                 
                 <div className="flex items-end">
                   <button 
-                    onClick={() => { setFilterOrderStatus('all'); setFilterOrderDateFrom(''); setFilterOrderDateTo(''); setFilterSeller('all'); }}
+                    onClick={() => { setFilterOrderStatus('all'); setFilterOrderDateFrom(''); setFilterOrderDateTo(''); setFilterSeller('all'); setFilterCustomerName(''); }}
                     className="w-full px-4 py-2.5 bg-gradient-to-r from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white rounded-lg font-semibold shadow-md transition-all transform hover:scale-105"
                   >
                     🔄 Xóa bộ lọc
@@ -2465,6 +2513,9 @@ export default function Admin(){
             <div>
               {(() => {
                 let filtered = orders.filter(o => {
+                  // Filter by customer name
+                  if (filterCustomerName && !o.customer_name?.toLowerCase().includes(filterCustomerName.toLowerCase())) return false
+                  
                   // Filter by status
                   if (filterOrderStatus !== 'all' && o.status !== filterOrderStatus) return false
                   
@@ -2629,7 +2680,7 @@ export default function Admin(){
       {step === 'categories' && (
         <div>
           <div className="bg-white p-6 rounded shadow mb-6">
-            <h2 className="text-2xl font-bold mb-4">Quản Lý Danh Mục</h2>
+            <h2 className="text-2xl font-bold mb-4">Quản lý danh mục</h2>
             <div className="flex items-center justify-between mb-4">
               <div className="text-sm text-gray-600">
                 Kéo/sắp xếp danh mục bằng nút ⬆️⬇️, sau đó nhấn "Lưu thứ tự" để áp dụng cho menu và trang chủ.
@@ -2655,7 +2706,7 @@ export default function Admin(){
                 onClick={addCategory}
                 className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium"
               >
-                ➕ Thêm Danh Mục
+                ➕ Thêm danh mục
               </button>
             </div>
 

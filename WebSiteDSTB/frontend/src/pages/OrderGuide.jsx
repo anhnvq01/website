@@ -5,10 +5,10 @@ export default function OrderGuide(){
   return (
     <div className="bg-gradient-to-b from-blue-50 to-white min-h-screen">
       {/* Header */}
-      <div className="bg-gradient-to-r from-pink-600 to-pink-500 text-white py-8 shadow-lg">
+      <div className="bg-gradient-to-r from-blue-600 to-blue-500 text-white py-8 shadow-lg">
         <div className="container mx-auto px-4">
           <h1 className="text-4xl font-bold mb-2">Hướng Dẫn Đặt Hàng Online</h1>
-          <p className="text-pink-100 text-lg">Mua sắm dễ dàng, nhanh chóng và an toàn</p>
+          <p className="text-blue-100 text-lg">Mua sắm dễ dàng, nhanh chóng và an toàn</p>
         </div>
       </div>
 
@@ -206,22 +206,20 @@ export default function OrderGuide(){
             <div className="border-b-2 border-gray-200 pb-6">
               <h3 className="text-xl font-bold text-gray-800 mb-3">❓ Nếu tôi nhận được hàng lỗi thì sao?</h3>
               <p className="text-gray-700">
-                Vui lòng liên hệ ngay với chúng tôi qua hotline hoặc email trong vòng 24 giờ nhận hàng. Chúng tôi sẽ hỗ trợ đổi trả hoặc hoàn tiền.
+                Vui lòng liên hệ ngay với chúng tôi qua hotline hoặc zalo hoặc facebook trong vòng 24 giờ nhận hàng. Chúng tôi sẽ hỗ trợ đổi trả hoặc hoàn tiền.
               </p>
             </div>
 
             <div>
               <h3 className="text-xl font-bold text-gray-800 mb-3">❓ Làm sao để liên hệ hỗ trợ?</h3>
+              <p className="text-gray-700 mb-2">
+                Hotline: <span className="font-bold text-blue-600">098.994.8583</span> 
+              </p>
               <p className="text-gray-700">
-                Hotline: <span className="font-bold text-pink-600">098.994.8583</span> 
+                Hoặc liên hệ qua <span className="font-semibold text-blue-600">Messenger</span> và <span className="font-semibold text-blue-600">Zalo</span>
               </p>
             </div>
           </div>
-        </div>
-
-        {/* Compact footer note (removed CTA per request) */}
-        <div className="text-center py-6">
-          <p className="text-sm text-gray-600">Mọi thắc mắc liên quan đến đơn hàng vui lòng liên hệ hotline <span className="font-bold text-pink-600">098.994.8583</span>.</p>
         </div>
       </div>
     </div>

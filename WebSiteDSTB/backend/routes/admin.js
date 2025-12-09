@@ -4,6 +4,7 @@ const db = require('../db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const multer = require('multer');
+const ExcelJS = require('exceljs');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret';
 
@@ -148,8 +149,8 @@ router.post('/upload-image', auth, (req, res) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
     
-    // Return relative path for the image
-    const imageUrl = `/images/products/${req.file.filename}`;
+    // Return URL - Cloudinary trả về full URL, local trả về relative path
+    const imageUrl = req.file.path || `/images/products/${req.file.filename}`;
     res.json({ ok: true, imageUrl });
   });
 });
@@ -560,6 +561,94 @@ router.delete('/admins/:id', auth, (req, res) => {
   
   db.prepare('DELETE FROM admins WHERE id = ?').run(id);
   res.json({ ok: true });
+});
+
+// Export orders with status "tomorrow_delivery" to Excel
+router.get('/export-ngay-mai-giao', auth, async (req, res) => {
+  try {
+    // Get all orders with status "tomorrow_delivery"
+    const orders = db.prepare(`
+      SELECT * FROM orders 
+      WHERE status = 'tomorrow_delivery'
+      ORDER BY createdAt DESC
+    `).all();
+
+    if (orders.length === 0) {
+      return res.status(404).json({ error: 'Không có đơn hàng nào với trạng thái "Giao ngày mai"' });
+    }
+
+    // Create workbook and worksheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Ngày mai giao');
+
+    // Define columns matching the Excel template
+    worksheet.columns = [
+      { header: 'Địa chỉ', key: 'address', width: 50 },
+      { header: 'Tên người nhận', key: 'name', width: 20 },
+      { header: 'Số điện thoại', key: 'phone', width: 15 },
+      { header: 'Tiền thu hộ (COD)', key: 'cod', width: 15 },
+      { header: 'Giá trị hàng hóa', key: 'value', width: 15 },
+      { header: 'Khối lượng (kg)', key: 'weight', width: 15 },
+      { header: 'Ghi chú', key: 'note', width: 30 }
+    ];
+
+    // Style the header row
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Add data rows
+    orders.forEach(order => {
+      let totalWeight = 0;
+      
+      // Parse items to calculate total weight
+      try {
+        const items = JSON.parse(order.items_json || '[]');
+        items.forEach(item => {
+          // Get product weight
+          const product = db.prepare('SELECT weight FROM products WHERE id = ?').get(item.id);
+          if (product && product.weight) {
+            totalWeight += product.weight * (item.qty || 1); // Weight is already in kg
+          }
+        });
+      } catch (e) {
+        console.error('Error calculating weight:', e);
+      }
+
+      // Round weight up to nearest 0.5kg
+      let roundedWeight = '';
+      if (totalWeight > 0) {
+        roundedWeight = Math.ceil(totalWeight * 2) / 2; // Round up to nearest 0.5
+      }
+
+      worksheet.addRow({
+        address: order.customer_address || '',
+        name: order.customer_name || '',
+        phone: order.customer_phone || '',
+        cod: order.total || 0,
+        value: order.total || 0,
+        weight: roundedWeight,
+        note: ''
+      });
+    });
+
+    // Set response headers for file download
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=DonHang_NgayMaiGiao_${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
+
+    // Write to response
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Error exporting Excel:', error);
+    res.status(500).json({ error: 'Lỗi khi xuất file Excel: ' + error.message });
+  }
 });
 
 module.exports = router;
