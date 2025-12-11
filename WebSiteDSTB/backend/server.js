@@ -102,6 +102,26 @@ app.use('/api/admin', admin);
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log('Server listening on port', PORT);
-});
+try {
+  const server = app.listen(PORT, () => {
+    console.log('Server listening on port', PORT);
+  });
+
+  // Handle errors
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  });
+
+  process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    process.exit(1);
+  });
+
+  server.on('error', (err) => {
+    console.error('Server error:', err);
+    process.exit(1);
+  });
+} catch (err) {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+}

@@ -39,60 +39,48 @@ function ensureImagesArray(value, fallback) {
   return [];
 }
 
-// Ensure admins table exists
-try {
-  db.prepare('SELECT id, username, password_hash, role, created_at FROM admins LIMIT 1').get();
-} catch (e) {
-  // Table doesn't exist, create it
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS admins (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT DEFAULT 'admin',
-      created_at TEXT DEFAULT (datetime('now'))
-    )
-  `).run();
-  
-  // Create default admin account
-  const defaultHash = bcrypt.hashSync('admin123', 10);
+// Initialize database tables on startup
+(async () => {
   try {
-    db.prepare('INSERT INTO admins (username, password_hash, role) VALUES (?, ?, ?)').run('admin', defaultHash, 'admin');
-    console.log('Default admin account created: admin / admin123');
+    // Ensure users table exists
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(100) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'admin',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    
+    // Check if default admin exists
+    const admin = await db.prepare('SELECT id FROM users WHERE username = $1').get('admin');
+    if (!admin) {
+      const defaultHash = bcrypt.hashSync('admin123', 10);
+      await db.prepare('INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)').run('admin', defaultHash, 'admin');
+      console.log('✅ Default admin account created: admin / admin123');
+    } else {
+      console.log('✅ Admin account already exists');
+    }
   } catch (e) {
-    console.log('Admin table already initialized');
+    console.error('⚠️ Database initialization error:', e.message);
   }
-}
+})();
 
-// Ensure seller column exists in orders table
-try {
-  db.prepare('SELECT seller FROM orders LIMIT 1').get();
-  console.log('Seller column already exists');
-} catch (e) {
-  console.log('Adding seller column to orders table...');
-  db.prepare('ALTER TABLE orders ADD COLUMN seller TEXT DEFAULT "Quang Tâm"').run();
-  console.log('Seller column added successfully');
-}
-
-// Ensure extra_cost column exists in orders table
-try {
-  db.prepare('SELECT extra_cost FROM orders LIMIT 1').get();
-  console.log('Extra_cost column already exists');
-} catch (e) {
-  console.log('Adding extra_cost column to orders table...');
-  db.prepare('ALTER TABLE orders ADD COLUMN extra_cost INTEGER DEFAULT 0').run();
-  console.log('Extra_cost column added successfully');
-}
-
-router.post('/login', (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'Missing' });
-  const row = db.prepare('SELECT * FROM admins WHERE username = ?').get(username);
-  if (!row) return res.status(401).json({ error: 'Invalid' });
-  const ok = bcrypt.compareSync(password, row.password_hash);
-  if (!ok) return res.status(401).json({ error: 'Invalid' });
-  const token = jwt.sign({ username, id: row.id, role: row.role }, JWT_SECRET, { expiresIn: '8h' });
-  res.json({ token });
+router.post('/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Missing' });
+    const row = await db.prepare('SELECT * FROM users WHERE username = $1').get(username);
+    if (!row) return res.status(401).json({ error: 'Invalid' });
+    const ok = bcrypt.compareSync(password, row.password_hash);
+    if (!ok) return res.status(401).json({ error: 'Invalid' });
+    const token = jwt.sign({ username, id: row.id, role: row.role }, JWT_SECRET, { expiresIn: '8h' });
+    res.json({ token });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // middleware
@@ -120,15 +108,20 @@ const toShipFlag = (value) => {
   return 1;
 };
 
-router.post('/products', auth, (req, res) => {
-  const { id, name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet, can_ship_province } = req.body;
-  const pid = id || 'P' + Date.now();
-  const gallery = ensureImagesArray(images, image);
-  const mainImage = image || gallery[0] || '';
-  const shipFlag = toShipFlag(can_ship_province);
-  db.prepare('INSERT OR REPLACE INTO products (id,name,price,category,description,image,weight,promo_price,images,sold_count,import_price,is_tet,can_ship_province) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    .run(pid, name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count || 0, import_price || 0, is_tet || 0, shipFlag);
-  res.json({ ok: true, id: pid });
+router.post('/products', auth, async (req, res) => {
+  try {
+    const { id, name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet, can_ship_province } = req.body;
+    const pid = id || 'P' + Date.now();
+    const gallery = ensureImagesArray(images, image);
+    const mainImage = image || gallery[0] || '';
+    const shipFlag = toShipFlag(can_ship_province);
+    await db.prepare('INSERT INTO products (id,name,price,category,description,image,weight,promo_price,images,sold_count,import_price,is_tet,can_ship_province) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (id) DO UPDATE SET name=$2,price=$3,category=$4,description=$5,image=$6,weight=$7,promo_price=$8,images=$9,sold_count=$10,import_price=$11,is_tet=$12,can_ship_province=$13')
+      .run(pid, name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count || 0, import_price || 0, is_tet || 0, shipFlag);
+    res.json({ ok: true, id: pid });
+  } catch (error) {
+    console.error('Error creating product:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Upload image endpoint
@@ -156,148 +149,210 @@ router.post('/upload-image', auth, (req, res) => {
 });
 
 // Get all products
-router.get('/products', auth, (req, res) => {
-  const products = db.prepare('SELECT * FROM products ORDER BY id DESC').all();
-  const normalized = products.map(p => ({
-    ...p,
-    images: ensureImagesArray(p.images, p.image)
-  }));
-  res.json(normalized);
+router.get('/products', auth, async (req, res) => {
+  try {
+    const products = await db.prepare('SELECT * FROM products ORDER BY id DESC').all();
+    // Load Cloudinary mapping
+    const mapping = require('../cloudinary-mapping.json');
+    const normalizeImageUrl = (url) => mapping[url] || url;
+    const normalized = products.map(p => {
+      const imagesArr = ensureImagesArray(p.images, p.image).map(normalizeImageUrl);
+      return {
+        ...p,
+        images: imagesArr,
+        image: imagesArr[0] || ''
+      };
+    });
+    res.json(normalized);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Get single product
-router.get('/products/:id', auth, (req, res) => {
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
-  if (!product) return res.status(404).json({ error: 'Not found' });
-  res.json({
-    ...product,
-    images: ensureImagesArray(product.images, product.image)
-  });
+router.get('/products/:id', auth, async (req, res) => {
+  try {
+    const product = await db.prepare('SELECT * FROM products WHERE id = $1').get(req.params.id);
+    if (!product) return res.status(404).json({ error: 'Not found' });
+    const mapping = require('../cloudinary-mapping.json');
+    const normalizeImageUrl = (url) => mapping[url] || url;
+    const imagesArr = ensureImagesArray(product.images, product.image).map(normalizeImageUrl);
+    res.json({
+      ...product,
+      images: imagesArr,
+      image: imagesArr[0] || ''
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Update product
-router.put('/products/:id', auth, (req, res) => {
-  const { name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet, can_ship_province } = req.body;
-  const id = req.params.id;
-  const gallery = ensureImagesArray(images, image);
-  const mainImage = image || gallery[0] || '';
-  const shipFlag = toShipFlag(can_ship_province);
+router.put('/products/:id', auth, async (req, res) => {
+  try {
+    const { name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet, can_ship_province } = req.body;
+    const id = req.params.id;
+    const gallery = ensureImagesArray(images, image);
+    const mainImage = image || gallery[0] || '';
+    const shipFlag = toShipFlag(can_ship_province);
 
-  db.prepare(`
-    UPDATE products 
-    SET name = ?, price = ?, category = ?, description = ?, image = ?, weight = ?, promo_price = ?, images = ?, sold_count = ?, import_price = ?, is_tet = ?, can_ship_province = ?
-    WHERE id = ?
-  `).run(name, price, category, description, mainImage, weight ?? null, promo_price ?? null, JSON.stringify(gallery), sold_count ?? 0, import_price || 0, is_tet || 0, shipFlag, id);
-  
-  res.json({ ok: true });
+    await db.prepare(`
+      UPDATE products 
+      SET name = $1, price = $2, category = $3, description = $4, image = $5, weight = $6, promo_price = $7, images = $8, sold_count = $9, import_price = $10, is_tet = $11, can_ship_province = $12
+      WHERE id = $13
+    `).run(name, price, category, description, mainImage, weight ?? null, promo_price ?? null, JSON.stringify(gallery), sold_count ?? 0, import_price || 0, is_tet || 0, shipFlag, id);
+    
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Delete product
-router.delete('/products/:id', auth, (req, res) => {
-  db.prepare('DELETE FROM products WHERE id = ?').run(req.params.id);
-  res.json({ ok: true });
+router.delete('/products/:id', auth, async (req, res) => {
+  try {
+    await db.prepare('DELETE FROM products WHERE id = $1').run(req.params.id);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Get all orders
-router.get('/orders', auth, (req, res) => {
-  const orders = db.prepare(`
-    SELECT * FROM orders ORDER BY createdAt DESC
-  `).all();
-  
-  const mapped = orders.map(o => ({
-    ...o,
-    items_json: o.items_json ? JSON.parse(o.items_json) : [],
-    paid: o.paid === 1
-  }));
-  
-  res.json(mapped);
+router.get('/orders', auth, async (req, res) => {
+  try {
+    const orders = await db.prepare(`
+      SELECT * FROM orders ORDER BY createdat DESC
+    `).all();
+    
+    const mapped = orders.map(o => ({
+      ...o,
+      items_json: o.items_json ? JSON.parse(o.items_json) : [],
+      paid: !!o.paid
+    }));
+    
+    res.json(mapped);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Create order (admin) - MUST be before /:id routes
-router.post('/orders', auth, (req, res) => {
-  const { customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller, extra_cost } = req.body;
-  const id = 'ORD' + Date.now();
-  
-  db.prepare(`
-    INSERT INTO orders (id, createdAt, customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller, extra_cost)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, new Date().toISOString(), customer_name, customer_phone, customer_address, JSON.stringify(items_json), subtotal, shipping, discount, total, method, paid ? 1 : 0, seller || 'Quang Tâm', extra_cost || 0);
-  
-  // Update sold_count for each product
-  const updateSold = db.prepare('UPDATE products SET sold_count = sold_count + ? WHERE id = ?');
-  (items_json || []).forEach(item => {
-    if (item.id) {
-      console.log(`Updating sold_count for product ${item.id}, adding ${item.qty || 1}`);
-      updateSold.run(item.qty || 1, item.id);
+router.post('/orders', auth, async (req, res) => {
+  try {
+    const { customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller, extra_cost } = req.body;
+    const id = 'ORD' + Date.now();
+    
+    await db.prepare(`
+      INSERT INTO orders (id, createdat, customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller, extra_cost)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    `).run(id, new Date().toISOString(), customer_name, customer_phone, customer_address, JSON.stringify(items_json), subtotal, shipping, discount, total, method, paid ? 1 : 0, seller || 'Quang Tâm', extra_cost || 0);
+    
+    // Update sold_count for each product
+    for (const item of (items_json || [])) {
+      if (item.id) {
+        console.log(`Updating sold_count for product ${item.id}, adding ${item.qty || 1}`);
+        await db.prepare('UPDATE products SET sold_count = sold_count + $1 WHERE id = $2').run(item.qty || 1, item.id);
+      }
     }
-  });
-  
-  res.json({ ok: true, id });
+    
+    res.json({ ok: true, id });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Get single order
-router.get('/orders/:id', auth, (req, res) => {
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
-  if (!order) return res.status(404).json({ error: 'Not found' });
-  
-  res.json({
-    ...order,
-    items_json: order.items_json ? JSON.parse(order.items_json) : [],
-    paid: order.paid === 1
-  });
+router.get('/orders/:id', auth, async (req, res) => {
+  try {
+    const order = await db.prepare('SELECT * FROM orders WHERE id = $1').get(req.params.id);
+    if (!order) return res.status(404).json({ error: 'Not found' });
+    
+    res.json({
+      ...order,
+      items_json: order.items_json ? JSON.parse(order.items_json) : [],
+      paid: !!order.paid
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Mark order as paid
-router.patch('/orders/:id/mark-paid', auth, (req, res) => {
-  db.prepare('UPDATE orders SET paid = 1 WHERE id = ?').run(req.params.id);
-  res.json({ ok: true });
+router.patch('/orders/:id/mark-paid', auth, async (req, res) => {
+  try {
+    await db.prepare('UPDATE orders SET paid = TRUE WHERE id = $1').run(req.params.id);
+    const updated = await db.prepare('SELECT * FROM orders WHERE id = $1').get(req.params.id);
+    res.json({ paid: updated.paid });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Mark order as unpaid
-router.patch('/orders/:id/mark-unpaid', auth, (req, res) => {
-  db.prepare('UPDATE orders SET paid = 0 WHERE id = ?').run(req.params.id);
-  res.json({ ok: true });
+router.patch('/orders/:id/mark-unpaid', auth, async (req, res) => {
+  try {
+    await db.prepare('UPDATE orders SET paid = FALSE WHERE id = $1').run(req.params.id);
+    const updated = await db.prepare('SELECT * FROM orders WHERE id = $1').get(req.params.id);
+    res.json({ paid: updated.paid });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Delete order
 router.delete('/orders/:id', auth, async (req, res) => {
-  const id = req.params.id;
-  
-  // Get order details before deletion to reduce sold_count and notify
-  const order = db.prepare('SELECT id, customer_name, customer_phone, customer_address, customer_province, items_json FROM orders WHERE id = ?').get(id);
-  
-  if (order && order.items_json) {
-    try {
-      const items = JSON.parse(order.items_json);
-      const updateSold = db.prepare('UPDATE products SET sold_count = MAX(0, sold_count - ?) WHERE id = ?');
-      
-      // Reduce sold_count for each product
-      items.forEach(item => {
-        if (item.id) {
-          const qty = item.qty || 1;
-          console.log(`Reducing sold_count for product ${item.id}, subtracting ${qty}`);
-          updateSold.run(qty, item.id);
+  try {
+    const id = req.params.id;
+    
+    // Get order details before deletion to reduce sold_count and notify
+    const order = await db.prepare('SELECT id, customer_name, customer_phone, customer_address, customer_province, items_json FROM orders WHERE id = $1').get(id);
+    
+    if (order && order.items_json) {
+      try {
+        const items = JSON.parse(order.items_json);
+        
+        // Reduce sold_count for each product
+        for (const item of items) {
+          if (item.id) {
+            const qty = item.qty || 1;
+            console.log(`Reducing sold_count for product ${item.id}, subtracting ${qty}`);
+            await db.prepare('UPDATE products SET sold_count = GREATEST(0, sold_count - $1) WHERE id = $2').run(qty, item.id);
+          }
         }
-      });
-    } catch (e) {
-      console.error('Error reducing sold_count:', e);
+      } catch (e) {
+        console.error('Error reducing sold_count:', e);
+      }
     }
+    
+    // Delete the order
+    await db.prepare('DELETE FROM orders WHERE id = $1').run(id);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
   }
-  
-  // Delete the order
-  db.prepare('DELETE FROM orders WHERE id = ?').run(id);
-  res.json({ ok: true });
 });
 
 // Update order
-router.patch('/orders/:id', auth, (req, res) => {
-  const id = req.params.id;
-  const body = req.body;
-
+router.patch('/orders/:id', auth, async (req, res) => {
   try {
+    const id = req.params.id;
+    const body = req.body;
+
     // Build dynamic UPDATE statement
     const fields = [];
     const values = [];
+    let paramIndex = 1;
 
     // Map of allowed fields to update
     const allowedFields = {
@@ -318,12 +373,12 @@ router.patch('/orders/:id', auth, (req, res) => {
 
     for (const [key, dbField] of Object.entries(allowedFields)) {
       if (key in body) {
-        fields.push(`${dbField} = ?`);
-        
+        fields.push(`${dbField} = $${paramIndex++}`);
         if (key === 'items_json') {
           values.push(JSON.stringify(body[key] || []));
         } else if (key === 'paid') {
-          values.push(body[key] ? 1 : 0);
+          // Ensure boolean for PostgreSQL
+          values.push(!!body[key]);
         } else {
           values.push(body[key]);
         }
@@ -336,8 +391,8 @@ router.patch('/orders/:id', auth, (req, res) => {
 
     values.push(id);
     
-    const sql = `UPDATE orders SET ${fields.join(', ')} WHERE id = ?`;
-    db.prepare(sql).run(...values);
+    const sql = `UPDATE orders SET ${fields.join(', ')} WHERE id = $${paramIndex}`;
+    await db.prepare(sql).run(...values);
 
     res.json({ ok: true });
   } catch (error) {
@@ -347,156 +402,179 @@ router.patch('/orders/:id', auth, (req, res) => {
 });
 
 // Stats endpoint: revenue and profit for a period (day|week|month)
-router.get('/stats', auth, (req, res) => {
-  const period = req.query.period || 'day';
-  const now = new Date();
-  let start;
+router.get('/stats', auth, async (req, res) => {
+  try {
+    const period = req.query.period || 'day';
+    const now = new Date();
+    let start;
 
-  if (period === 'day') {
-    start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  } else if (period === 'week') {
-    // start of ISO week (Monday)
-    const day = now.getDay(); // 0 (Sun) - 6
-    const diff = (day === 0 ? -6 : 1) - day; // shift to Monday
-    start = new Date(now);
-    start.setDate(now.getDate() + diff);
-    start.setHours(0,0,0,0);
-  } else if (period === 'month') {
-    start = new Date(now.getFullYear(), now.getMonth(), 1);
-  } else if (period === 'year') {
-    start = new Date(now.getFullYear(), 0, 1);
-  } else {
-    return res.status(400).json({ error: 'Invalid period' });
-  }
-
-  const startIso = start.toISOString();
-  const end = new Date();
-  const endIso = end.toISOString();
-
-  // Calculate revenue: total - shipping - extra_cost
-  const row = db.prepare(`SELECT SUM(total - COALESCE(shipping, 0) - COALESCE(extra_cost, 0)) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ?`).get(startIso, endIso);
-  const revenue = row && row.revenue ? Number(row.revenue) : 0;
-
-  // Calculate stats by seller
-  const quangTamRow = db.prepare(`SELECT SUM(total - COALESCE(shipping, 0) - COALESCE(extra_cost, 0)) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ? AND (seller = ? OR seller IS NULL)`).get(startIso, endIso, 'Quang Tâm');
-  const meHangRow = db.prepare(`SELECT SUM(total - COALESCE(shipping, 0) - COALESCE(extra_cost, 0)) as revenue FROM orders WHERE createdAt >= ? AND createdAt <= ? AND seller = ?`).get(startIso, endIso, 'Mẹ Hằng');
-  
-  const revenueQuangTam = quangTamRow && quangTamRow.revenue ? Number(quangTamRow.revenue) : 0;
-  const revenueMeHang = meHangRow && meHangRow.revenue ? Number(meHangRow.revenue) : 0;
-
-  // Calculate profit: revenue - total import cost - extra_cost
-  const orders = db.prepare(`SELECT items_json, seller, COALESCE(extra_cost, 0) as extra_cost FROM orders WHERE createdAt >= ? AND createdAt <= ?`).all(startIso, endIso);
-  let totalProfit = 0;
-  let profitQuangTam = 0;
-  let profitMeHang = 0;
-  
-  orders.forEach(order => {
-    try {
-      const items = JSON.parse(order.items_json || '[]');
-      let orderProfit = 0;
-      items.forEach(item => {
-        // Get product details including import_price
-        const product = db.prepare('SELECT import_price, promo_price, price FROM products WHERE id = ?').get(item.id);
-        if (product) {
-          const importPrice = Number(product.import_price || 0);
-          const salePrice = Number(product.promo_price || product.price || 0);
-          const quantity = Number(item.qty || 1);
-          const itemProfit = (salePrice - importPrice) * quantity;
-          orderProfit += itemProfit;
-        }
-      });
-      
-      // Subtract extra_cost from profit
-      orderProfit -= Number(order.extra_cost || 0);
-      totalProfit += orderProfit;
-      
-      // Distribute profit by seller
-      if (order.seller === 'Mẹ Hằng') {
-        profitMeHang += orderProfit;
-      } else {
-        profitQuangTam += orderProfit; // Default to Quang Tâm
-      }
-    } catch (e) {
-      console.error('Error calculating profit for order:', e);
+    if (period === 'day') {
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (period === 'week') {
+      // start of ISO week (Monday)
+      const day = now.getDay(); // 0 (Sun) - 6
+      const diff = (day === 0 ? -6 : 1) - day; // shift to Monday
+      start = new Date(now);
+      start.setDate(now.getDate() + diff);
+      start.setHours(0,0,0,0);
+    } else if (period === 'month') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (period === 'year') {
+      start = new Date(now.getFullYear(), 0, 1);
+    } else {
+      return res.status(400).json({ error: 'Invalid period' });
     }
-  });
-  
-  const profit = Math.round(totalProfit);
-  profitQuangTam = Math.round(profitQuangTam);
-  profitMeHang = Math.round(profitMeHang);
 
-  // Additional metrics
-  const totalProducts = db.prepare('SELECT COUNT(*) as count FROM products').get().count || 0;
-  const totalOrders = db.prepare('SELECT COUNT(*) as count FROM orders').get().count || 0;
-  
-  // Đơn chưa giao (status = 'undelivered' hoặc không có status hoặc status khác delivered/cancelled)
-  const undeliveredOrders = db.prepare(`SELECT COUNT(*) as count FROM orders WHERE COALESCE(status, 'undelivered') = 'undelivered'`).get().count || 0;
-  
-  // Đơn đã giao nhưng chưa thanh toán (status = 'delivered' và paid = 0)
-  const unpaidDeliveredOrders = db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'delivered' AND paid = 0`).get().count || 0;
-  
-  // Đơn bom (status = 'bom')
-  const bomOrders = db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'bom'`).get().count || 0;
+    const startIso = start.toISOString();
+    const end = new Date();
+    const endIso = end.toISOString();
 
-  res.json({ 
-    period, 
-    revenue, 
-    profit,
-    revenueQuangTam,
-    revenueMeHang,
-    profitQuangTam,
-    profitMeHang,
-    totalProducts,
-    totalOrders,
-    undeliveredOrders,
-    unpaidDeliveredOrders,
-    bomOrders
-  });
+    // Calculate revenue: total - shipping - extra_cost
+    const row = await db.prepare(`SELECT COALESCE(SUM(total - COALESCE(shipping, 0) - COALESCE(extra_cost, 0)), 0) as revenue FROM orders WHERE createdat >= $1 AND createdat <= $2`).get(startIso, endIso);
+    const revenue = row && row.revenue ? Number(row.revenue) : 0;
+
+    // Calculate stats by seller
+    const quangTamRow = await db.prepare(`SELECT COALESCE(SUM(total - COALESCE(shipping, 0) - COALESCE(extra_cost, 0)), 0) as revenue FROM orders WHERE createdat >= $1 AND createdat <= $2 AND (seller = $3 OR seller IS NULL)`).get(startIso, endIso, 'Quang Tâm');
+    const meHangRow = await db.prepare(`SELECT COALESCE(SUM(total - COALESCE(shipping, 0) - COALESCE(extra_cost, 0)), 0) as revenue FROM orders WHERE createdat >= $1 AND createdat <= $2 AND seller = $3`).get(startIso, endIso, 'Mẹ Hằng');
+    
+    const revenueQuangTam = quangTamRow && quangTamRow.revenue ? Number(quangTamRow.revenue) : 0;
+    const revenueMeHang = meHangRow && meHangRow.revenue ? Number(meHangRow.revenue) : 0;
+
+    // Calculate profit: revenue - total import cost - extra_cost
+    const orders = await db.prepare(`SELECT items_json, seller, COALESCE(extra_cost, 0) as extra_cost FROM orders WHERE createdat >= $1 AND createdat <= $2`).all(startIso, endIso);
+    let totalProfit = 0;
+    let profitQuangTam = 0;
+    let profitMeHang = 0;
+    
+    for (const order of orders) {
+      try {
+        const items = JSON.parse(order.items_json || '[]');
+        let orderProfit = 0;
+        for (const item of items) {
+          // Get product details including import_price
+          const product = await db.prepare('SELECT import_price, promo_price, price FROM products WHERE id = $1').get(item.id);
+          if (product) {
+            const importPrice = Number(product.import_price || 0);
+            const salePrice = Number(product.promo_price || product.price || 0);
+            const quantity = Number(item.qty || 1);
+            const itemProfit = (salePrice - importPrice) * quantity;
+            orderProfit += itemProfit;
+          }
+        }
+        
+        // Subtract extra_cost from profit
+        orderProfit -= Number(order.extra_cost || 0);
+        totalProfit += orderProfit;
+        
+        // Distribute profit by seller
+        if (order.seller === 'Mẹ Hằng') {
+          profitMeHang += orderProfit;
+        } else {
+          profitQuangTam += orderProfit; // Default to Quang Tâm
+        }
+      } catch (e) {
+        console.error('Error calculating profit for order:', e);
+      }
+    }
+    
+    const profit = Math.round(totalProfit);
+    profitQuangTam = Math.round(profitQuangTam);
+    profitMeHang = Math.round(profitMeHang);
+
+    // Additional metrics
+    const totalProductsRow = await db.prepare('SELECT COUNT(*) as count FROM products').get();
+    const totalOrdersRow = await db.prepare('SELECT COUNT(*) as count FROM orders').get();
+    
+    // Đơn chưa giao (status = 'undelivered' hoặc không có status hoặc status khác delivered/cancelled)
+    const undeliveredOrdersRow = await db.prepare(`SELECT COUNT(*) as count FROM orders WHERE COALESCE(status, 'undelivered') = 'undelivered'`).get();
+    
+    // Đơn đã giao nhưng chưa thanh toán (status = 'delivered' và paid = 0)
+    const unpaidDeliveredOrdersRow = await db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'delivered' AND paid = FALSE`).get();
+    
+    // Đơn bom (status = 'bom')
+    const bomOrdersRow = await db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'bom'`).get();
+
+    res.json({ 
+      period, 
+      revenue, 
+      profit,
+      revenueQuangTam,
+      revenueMeHang,
+      profitQuangTam,
+      profitMeHang,
+      totalProducts: totalProductsRow?.count || 0,
+      totalOrders: totalOrdersRow?.count || 0,
+      undeliveredOrders: undeliveredOrdersRow?.count || 0,
+      unpaidDeliveredOrders: unpaidDeliveredOrdersRow?.count || 0,
+      bomOrders: bomOrdersRow?.count || 0
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Category management
-router.get('/categories', auth, (req, res) => {
-  const categories = db.prepare('SELECT rowid, category, sort_order FROM categories ORDER BY COALESCE(sort_order, rowid)').all();
-  res.json(categories);
-});
-
-router.post('/categories', auth, (req, res) => {
-  const { category } = req.body;
-  if (!category || !category.trim()) return res.status(400).json({ error: 'Category name required' });
-  const nextOrderRow = db.prepare('SELECT IFNULL(MAX(sort_order), 0) as maxOrder FROM categories').get();
-  const nextOrder = (nextOrderRow?.maxOrder || 0) + 1;
-  db.prepare('INSERT OR IGNORE INTO categories (category, sort_order) VALUES (?, ?)').run(category.trim(), nextOrder);
-  res.json({ ok: true, category: category.trim(), sort_order: nextOrder });
-});
-
-router.put('/categories/:id', auth, (req, res) => {
-  const { id } = req.params;
-  const { category } = req.body;
-  if (!category || !category.trim()) return res.status(400).json({ error: 'Category name required' });
-  db.prepare('UPDATE categories SET category = ? WHERE rowid = ?').run(category.trim(), id);
-  res.json({ ok: true, category: category.trim() });
-});
-
-router.delete('/categories/:id', auth, (req, res) => {
-  const { id } = req.params;
-  db.prepare('DELETE FROM categories WHERE rowid = ?').run(id);
-  res.json({ ok: true });
-});
-
-// Reorder categories: body { order: [rowid1, rowid2, ...] }
-router.post('/categories/reorder', auth, (req, res) => {
-  const { order } = req.body;
-  if (!Array.isArray(order) || order.length === 0) {
-    return res.status(400).json({ error: 'Order array required' });
-  }
-
-  const update = db.prepare('UPDATE categories SET sort_order = ? WHERE rowid = ?');
-  const txn = db.transaction((ids) => {
-    ids.forEach((id, idx) => update.run(idx + 1, id));
-  });
-
+router.get('/categories', auth, async (req, res) => {
   try {
-    txn(order);
+    const categories = await db.prepare('SELECT id, category, sort_order FROM categories ORDER BY COALESCE(sort_order, id)').all();
+    res.json(categories);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/categories', auth, async (req, res) => {
+  try {
+    const { category } = req.body;
+    if (!category || !category.trim()) return res.status(400).json({ error: 'Category name required' });
+    const nextOrderRow = await db.prepare('SELECT COALESCE(MAX(sort_order), 0) as maxOrder FROM categories').get();
+    const nextOrder = (nextOrderRow?.maxOrder || 0) + 1;
+    await db.prepare('INSERT INTO categories (category, sort_order) VALUES ($1, $2) ON CONFLICT (category) DO NOTHING').run(category.trim(), nextOrder);
+    res.json({ ok: true, category: category.trim(), sort_order: nextOrder });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.put('/categories/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { category } = req.body;
+    if (!category || !category.trim()) return res.status(400).json({ error: 'Category name required' });
+    await db.prepare('UPDATE categories SET category = $1 WHERE id = $2').run(category.trim(), id);
+    res.json({ ok: true, category: category.trim() });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.delete('/categories/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.prepare('DELETE FROM categories WHERE id = $1').run(id);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Reorder categories: body { order: [id1, id2, ...] }
+router.post('/categories/reorder', auth, async (req, res) => {
+  try {
+    const { order } = req.body;
+    if (!Array.isArray(order) || order.length === 0) {
+      return res.status(400).json({ error: 'Order array required' });
+    }
+
+    for (let idx = 0; idx < order.length; idx++) {
+      await db.prepare('UPDATE categories SET sort_order = $1 WHERE id = $2').run(idx + 1, order[idx]);
+    }
+
     res.json({ ok: true });
   } catch (e) {
     console.error('Reorder categories error:', e);
@@ -505,72 +583,92 @@ router.post('/categories/reorder', auth, (req, res) => {
 });
 
 // Admin management endpoints
-router.get('/admins', auth, (req, res) => {
-  const admins = db.prepare('SELECT id, username, role, created_at FROM admins ORDER BY created_at DESC').all();
-  res.json(admins);
+router.get('/admins', auth, async (req, res) => {
+  try {
+    const admins = await db.prepare('SELECT id, username, role, created_at FROM users ORDER BY created_at DESC').all();
+    res.json(admins);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
-router.post('/admins', auth, (req, res) => {
-  const { username, password, role } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
-  
-  // Check if username already exists
-  const existing = db.prepare('SELECT id FROM admins WHERE username = ?').get(username);
-  if (existing) return res.status(400).json({ error: 'Username already exists' });
-  
-  const passwordHash = bcrypt.hashSync(password, 10);
-  const result = db.prepare('INSERT INTO admins (username, password_hash, role) VALUES (?, ?, ?)').run(username, passwordHash, role || 'admin');
-  res.json({ ok: true, id: result.lastInsertRowid });
-});
-
-router.put('/admins/:id', auth, (req, res) => {
-  const { id } = req.params;
-  const { username, password, role } = req.body;
-  
-  if (!username) return res.status(400).json({ error: 'Username required' });
-  
-  // Check if username is taken by another user
-  const existing = db.prepare('SELECT id FROM admins WHERE username = ? AND id != ?').get(username, id);
-  if (existing) return res.status(400).json({ error: 'Username already exists' });
-  
-  if (password && password.trim()) {
-    // Update with new password
+router.post('/admins', auth, async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+    
+    // Check if username already exists
+    const existing = await db.prepare('SELECT id FROM users WHERE username = $1').get(username);
+    if (existing) return res.status(400).json({ error: 'Username already exists' });
+    
     const passwordHash = bcrypt.hashSync(password, 10);
-    db.prepare('UPDATE admins SET username = ?, password_hash = ?, role = ? WHERE id = ?').run(username, passwordHash, role || 'admin', id);
-  } else {
-    // Update without changing password
-    db.prepare('UPDATE admins SET username = ?, role = ? WHERE id = ?').run(username, role || 'admin', id);
+    await db.prepare('INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)').run(username, passwordHash, role || 'admin');
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
   }
-  
-  res.json({ ok: true });
 });
 
-router.delete('/admins/:id', auth, (req, res) => {
-  const { id } = req.params;
-  
-  // Prevent deleting yourself
-  if (req.user.id == id) {
-    return res.status(400).json({ error: 'Cannot delete your own account' });
+router.put('/admins/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { username, password, role } = req.body;
+    
+    if (!username) return res.status(400).json({ error: 'Username required' });
+    
+    // Check if username is taken by another user
+    const existing = await db.prepare('SELECT id FROM users WHERE username = $1 AND id != $2').get(username, id);
+    if (existing) return res.status(400).json({ error: 'Username already exists' });
+    
+    if (password && password.trim()) {
+      // Update with new password
+      const passwordHash = bcrypt.hashSync(password, 10);
+      await db.prepare('UPDATE users SET username = $1, password_hash = $2, role = $3 WHERE id = $4').run(username, passwordHash, role || 'admin', id);
+    } else {
+      // Update without changing password
+      await db.prepare('UPDATE users SET username = $1, role = $2 WHERE id = $3').run(username, role || 'admin', id);
+    }
+    
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
   }
-  
-  // Prevent deleting last admin
-  const adminCount = db.prepare('SELECT COUNT(*) as count FROM admins').get();
-  if (adminCount.count <= 1) {
-    return res.status(400).json({ error: 'Cannot delete the last admin account' });
+});
+
+router.delete('/admins/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Prevent deleting yourself
+    if (req.user.id == id) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+    
+    // Prevent deleting last admin
+    const adminCount = await db.prepare('SELECT COUNT(*) as count FROM users').get();
+    if (adminCount.count <= 1) {
+      return res.status(400).json({ error: 'Cannot delete the last admin account' });
+    }
+    
+    await db.prepare('DELETE FROM users WHERE id = $1').run(id);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Server error' });
   }
-  
-  db.prepare('DELETE FROM admins WHERE id = ?').run(id);
-  res.json({ ok: true });
 });
 
 // Export orders with status "tomorrow_delivery" to Excel
 router.get('/export-ngay-mai-giao', auth, async (req, res) => {
   try {
     // Get all orders with status "tomorrow_delivery"
-    const orders = db.prepare(`
+    const orders = await db.prepare(`
       SELECT * FROM orders 
       WHERE status = 'tomorrow_delivery'
-      ORDER BY createdAt DESC
+      ORDER BY createdat DESC
     `).all();
 
     if (orders.length === 0) {
@@ -598,19 +696,19 @@ router.get('/export-ngay-mai-giao', auth, async (req, res) => {
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
 
     // Add data rows
-    orders.forEach(order => {
+    for (const order of orders) {
       let totalWeight = 0;
       
       // Parse items to calculate total weight
       try {
         const items = JSON.parse(order.items_json || '[]');
-        items.forEach(item => {
+        for (const item of items) {
           // Get product weight
-          const product = db.prepare('SELECT weight FROM products WHERE id = ?').get(item.id);
+          const product = await db.prepare('SELECT weight FROM products WHERE id = $1').get(item.id);
           if (product && product.weight) {
             totalWeight += product.weight * (item.qty || 1); // Weight is already in kg
           }
-        });
+        }
       } catch (e) {
         console.error('Error calculating weight:', e);
       }
@@ -630,7 +728,7 @@ router.get('/export-ngay-mai-giao', auth, async (req, res) => {
         weight: roundedWeight,
         note: ''
       });
-    });
+    }
 
     // Set response headers for file download
     res.setHeader(
