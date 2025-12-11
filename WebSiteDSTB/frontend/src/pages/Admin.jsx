@@ -3,11 +3,18 @@ import { Link } from 'react-router-dom'
 import Api from '../services/api'
 import html2canvas from 'html2canvas'
 
+// Helper to add cache-busting timestamp to image URLs
+function addTimestampToUrl(url) {
+  if (!url) return url
+  return url + (url.includes('?') ? '&' : '?') + 't=' + Date.now()
+}
+
 export default function Admin(){
   const [step, setStep] = useState('login') // login, dashboard, products, orders, add-product, edit-product
   const [user, setUser] = useState('')
   const [pass, setPass] = useState('')
   const [token, setToken] = useState('')
+  const [uploading, setUploading] = useState(false) // Track upload status
   const toastTimer = useRef(null)
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' })
   const [confirmDialog, setConfirmDialog] = useState({ visible: false, message: '', onConfirm: null })
@@ -63,6 +70,23 @@ export default function Admin(){
     }
   }, [])
 
+  // Reset crop tool when step changes (e.g., when navigating away)
+  useEffect(() => {
+    if (step !== 'add-product' && step !== 'edit-product') {
+      setShowCropTool(false)
+      setCropImage(null)
+      setCropOffsetX(0)
+      setCropOffsetY(0)
+      setUploadedFile(null)
+      setImagePreview('https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm')
+      // Clear canvas completely
+      if (cropCanvasRef.current) {
+        const ctx = cropCanvasRef.current.getContext('2d')
+        ctx?.clearRect(0, 0, cropCanvasRef.current.width, cropCanvasRef.current.height)
+      }
+    }
+  }, [step])
+
   // Draw crop image on canvas when showCropTool changes
   useEffect(() => {
     if (!showCropTool || !cropImage || !cropCanvasRef.current) return
@@ -82,7 +106,7 @@ export default function Admin(){
       const offsetY = cropOffsetY
       ctx.drawImage(img, offsetX, offsetY, size, size, 0, 0, size, size)
       
-      // Draw grid overlay to show crop area
+      // Draw grid overlay to show crop area (ONLY FOR DISPLAY - not saved)
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
       ctx.lineWidth = 1
       const gridSize = size / 3
@@ -126,7 +150,6 @@ export default function Admin(){
   })
   const [imagePreview, setImagePreview] = useState('https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm')
   const [gallery, setGallery] = useState([])
-  const [uploading, setUploading] = useState(false)
   const [uploadedFile, setUploadedFile] = useState(null)
 
   // Order management
@@ -274,27 +297,6 @@ export default function Admin(){
     }
   }
 
-  // Download database backup
-  async function downloadDatabase() {
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
-      const response = await fetch(`${apiUrl}/download-db`)
-      if (!response.ok) throw new Error('Tải xuống thất bại')
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `taybac-backup-${new Date().toISOString().slice(0, 10)}.db`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-      showToast('Tải xuống CSDL thành công', 'success')
-    } catch (e) {
-      showToast('Lỗi tải xuống: ' + e.message, 'error')
-    }
-  }
-
   // Export orders with status "Ngày mai giao" to Excel
   async function exportNgayMaiGiao() {
     try {
@@ -336,6 +338,7 @@ export default function Admin(){
       const data = await Api.adminGetProducts(tk)
       const normalized = data.map(p => ({
         ...p,
+        // Keep clean URLs from DB; add cache-busting only when rendering
         images: parseImagesField(p.images, p.image),
         import_price: Number(p.import_price || 0),
         is_tet: !!p.is_tet,
@@ -393,32 +396,62 @@ export default function Admin(){
   }
 
   function handleCropConfirm() {
-    const canvas = cropCanvasRef.current
-    if (!canvas) return
+    const displayCanvas = cropCanvasRef.current
+    if (!displayCanvas || !cropImage) return
     
-    canvas.toBlob(async (blob) => {
-      try {
-        const croppedFile = new File([blob], 'cropped-image.jpg', { type: 'image/jpeg' })
-        setUploading(true)
-        const result = await Api.adminUploadImage(token, croppedFile)
-        const uploadedUrl = result.imageUrl || result.url
-        setImagePreview(uploadedUrl)
-        setProductForm(prev => ({...prev, image: uploadedUrl}))
-        setUploadedFile('cropped-image.jpg')
-        setShowCropTool(false)
-        setCropImage(null)
-        setCropOffsetX(0)
-        setCropOffsetY(0)
-        showToast('Tải ảnh thành công!')
-      } catch(err) {
-        if (!handleAuthError(err)) {
-          console.error('Upload error:', err)
-          showToast('Lỗi tải ảnh: ' + (err.response?.data?.error || err.message), 'error')
+    const currentStep = step  // Capture current step
+    
+    // Create a NEW canvas for export (without grid overlay)
+    const exportCanvas = document.createElement('canvas')
+    const img = new Image()
+    
+    img.onload = () => {
+      const size = Math.min(img.width, img.height)
+      exportCanvas.width = size
+      exportCanvas.height = size
+      
+      const ctx = exportCanvas.getContext('2d')
+      const offsetX = cropOffsetX
+      const offsetY = cropOffsetY
+      // Draw image WITHOUT grid
+      ctx.drawImage(img, offsetX, offsetY, size, size, 0, 0, size, size)
+      
+      // Convert CLEAN canvas to blob
+      exportCanvas.toBlob(async (blob) => {
+        try {
+          const croppedFile = new File([blob], 'cropped-image.jpg', { type: 'image/jpeg' })
+          setUploading(true)
+          const result = await Api.adminUploadImage(token, croppedFile)
+          let uploadedUrl = result.imageUrl || result.url
+          
+          // IMPORTANT: Store clean URL (without timestamp) for database
+          const cleanUrl = uploadedUrl
+          // For preview: add timestamp to bypass browser cache
+          const displayUrl = uploadedUrl + (uploadedUrl.includes('?') ? '&' : '?') + 't=' + Date.now()
+          
+          setImagePreview(displayUrl)
+          // Save CLEAN URL to form (without timestamp for DB)
+          setProductForm(prev => ({...prev, image: cleanUrl}))
+          setUploadedFile('cropped-image.jpg')
+          setShowCropTool(false)
+          setCropImage(null)
+          setCropOffsetX(0)
+          setCropOffsetY(0)
+          console.log('Image uploaded. Clean URL for DB:', cleanUrl)
+          showToast('Tải ảnh thành công!')
+          // Don't scroll - stay on form
+        } catch(err) {
+          if (!handleAuthError(err)) {
+            console.error('Upload error:', err)
+            showToast('Lỗi tải ảnh: ' + (err.response?.data?.error || err.message), 'error')
+          }
+        } finally {
+          setUploading(false)
         }
-      } finally {
-        setUploading(false)
-      }
-    }, 'image/jpeg', 0.9)
+      }, 'image/jpeg', 0.9)
+    }
+    
+    img.src = cropImage
   }
 
   function handleCanvasMouseDown(e) {
@@ -505,18 +538,25 @@ export default function Admin(){
         console.log('Updating product with payload:', payload)
         await Api.adminUpdateProduct(token, editingId, payload)
         showToast('Cập nhật sản phẩm thành công')
+        // Reload products to update all views
+        await loadProducts(token)
+        // Trigger event to update CartIcon if product is in cart
+        window.dispatchEvent(new CustomEvent('productUpdated', { detail: { productId: editingId } }))
+        // Stay on edit page after update
       } else {
         console.log('Adding product with payload:', payload)
         await Api.adminAddProduct(token, payload)
         showToast('Thêm sản phẩm thành công')
         resetProductForm()
         setEditingId(null)
+        // Go to products list only after adding new product
+        setStep('products')
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }
-      resetProductForm()
-      setEditingId(null)
-      setStep('products')
-      await loadProducts(token)
+      if (!editingId) {
+        resetProductForm()
+        setEditingId(null)
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch(e){ if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
   }
@@ -532,25 +572,34 @@ export default function Admin(){
   }
 
   async function editProduct(product) {
-    const parsedImages = parseImagesField(product.images, product.image)
-    const mainImage = product.image || parsedImages[0] || 'https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm'
+    // Refetch latest product data from API to ensure we have the most recent image
+    let freshProduct = product
+    try {
+      freshProduct = await Api.product(product.id)
+    } catch (err) {
+      console.warn('Could not refetch product for edit:', err)
+    }
+    
+    const parsedImages = parseImagesField(freshProduct.images, freshProduct.image)
+    const mainImage = freshProduct.image || parsedImages[0] || 'https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm'
     setProductForm({
-      name: product.name,
-      price: product.price,
-      category: product.category,
-      description: product.description,
+      name: freshProduct.name,
+      price: freshProduct.price,
+      category: freshProduct.category,
+      description: freshProduct.description,
       image: mainImage,
       images: parsedImages,
-      weight: product.weight || '',
-      promo_price: product.promo_price ?? null,
-      sold_count: product.sold_count || 0,
-      import_price: Number(product.import_price || 0),
-      is_tet: !!product.is_tet,
-      can_ship_province: normalizeCanShip(product.can_ship_province)
+      weight: freshProduct.weight || '',
+      promo_price: freshProduct.promo_price ?? null,
+      sold_count: freshProduct.sold_count || 0,
+      import_price: Number(freshProduct.import_price || 0),
+      is_tet: !!freshProduct.is_tet,
+      can_ship_province: normalizeCanShip(freshProduct.can_ship_province)
     })
     setGallery(parsedImages)
-    setImagePreview(mainImage)
-    setEditingId(product.id)
+    // Add timestamp to bypass browser cache for updated images
+    setImagePreview(addTimestampToUrl(mainImage))
+    setEditingId(freshProduct.id)
     setStep('edit-product')
   }
 
@@ -627,7 +676,7 @@ export default function Admin(){
   
     function moveCategory(id, direction) {
       setCategories(prev => {
-        const idx = prev.findIndex(c => c.rowid === id)
+        const idx = prev.findIndex(c => c.id === id)
         if (idx === -1) return prev
         const target = direction === 'up' ? idx - 1 : idx + 1
         if (target < 0 || target >= prev.length) return prev
@@ -640,7 +689,7 @@ export default function Admin(){
   
     async function saveCategoryOrder() {
       if (!categoriesDirty) return
-      const order = categories.map(c => c.rowid)
+      const order = categories.map(c => c.id)
       try {
         await Api.adminReorderCategories(token, order)
         showToast('Đã lưu thứ tự danh mục', 'success')
@@ -767,7 +816,7 @@ export default function Admin(){
 
     try {
       const subtotal = compactItems.reduce((sum, item) => sum + (item.price * item.qty), 0)
-      const total = subtotal + orderForm.shipping - orderForm.discount
+      const total = subtotal + orderForm.shipping - orderForm.discount + (orderForm.extra_cost || 0)
 
       if (editingOrderId) {
         await Api.adminUpdateOrder(token, editingOrderId, {
@@ -841,6 +890,7 @@ export default function Admin(){
   async function loadAdmins(tk) {
     try {
       const data = await Api.adminGetAdmins(tk)
+      console.log('Admins loaded:', data)
       setAdmins(data)
     } catch(e) { if (!handleAuthError(e)) console.error(e) }
   }
@@ -1015,15 +1065,8 @@ export default function Admin(){
         >
           📊 Xuất đơn ngày mai giao
         </button>
-        <button 
-          onClick={downloadDatabase}
-          className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap border-transparent text-gray-600 hover:text-blue-600`}
-          title="Tải xuống bản sao lưu cơ sở dữ liệu"
-        >
-          💾 Tải CSDL
-        </button>
       </div>
-
+    
       {/* Dashboard Overview */}
       {step === 'dashboard' && (
         <div className="space-y-6">
@@ -1512,10 +1555,10 @@ export default function Admin(){
             <div>
               <label className="block text-gray-700 font-medium mb-1">Ảnh đại diện <span className="text-red-600">*</span></label>
               
-              {/* Crop Tool Modal */}
-              {showCropTool && cropImage && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 mb-4">
-                  <div className="bg-white rounded shadow-lg max-w-2xl w-full p-6">
+              {/* Crop Tool Modal - Only render when showCropTool is true */}
+              {showCropTool && cropImage && step === 'edit-product' ? (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 mb-4 animate-fade-in">
+                  <div className="bg-white rounded shadow-lg max-w-2xl w-full p-6 animate-scale-in">
                     <h3 className="text-lg font-bold mb-2">✏️ Chọn vùng ảnh đại diện (Hình Vuông)</h3>
                     <p className="text-sm text-gray-600 mb-4">Kéo chuột trên ảnh để điều chỉnh vị trí cắt. Những đường lưới giúp bạn căn chỉnh ảnh tốt hơn.</p>
                     
@@ -1558,7 +1601,7 @@ export default function Admin(){
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               <div className={`border-2 border-dashed rounded p-4 ${productFormErrors.image ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}>
                 <div className="mb-3">
@@ -1592,10 +1635,14 @@ export default function Admin(){
               </button>
               <button 
                 type="button"
-                onClick={() => setStep('products')}
+                onClick={() => {
+                  setStep('products')
+                  resetProductForm()
+                  setEditingId(null)
+                }}
                 className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
               >
-                Hủy
+                ← Quay lại danh sách
               </button>
             </div>
           </form>
@@ -2755,15 +2802,15 @@ export default function Admin(){
                   </thead>
                   <tbody>
                     {categories.map((cat, idx) => (
-                      <tr key={cat.rowid} className="border-b hover:bg-gray-50">
+                      <tr key={cat.id} className="border-b hover:bg-gray-50">
                         <td className="px-4 py-2">
-                          {editingCategoryId === cat.rowid ? (
+                          {editingCategoryId === cat.id ? (
                             <input 
                               type="text" 
                               defaultValue={cat.category}
-                              onBlur={e => updateCategory(cat.rowid, e.target.value)}
+                              onBlur={e => updateCategory(cat.id, e.target.value)}
                               onKeyPress={e => {
-                                if (e.key === 'Enter') updateCategory(cat.rowid, e.target.value)
+                                if (e.key === 'Enter') updateCategory(cat.id, e.target.value)
                                 if (e.key === 'Escape') setEditingCategoryId(null)
                               }}
                               autoFocus
@@ -2775,27 +2822,27 @@ export default function Admin(){
                         </td>
                         <td className="px-4 py-2 text-center space-x-2">
                           <button 
-                            onClick={() => moveCategory(cat.rowid, 'up')}
+                            onClick={() => moveCategory(cat.id, 'up')}
                             disabled={idx === 0}
                             className={`px-2 py-1 rounded text-sm ${idx === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                           >
                             ⬆️
                           </button>
                           <button 
-                            onClick={() => moveCategory(cat.rowid, 'down')}
+                            onClick={() => moveCategory(cat.id, 'down')}
                             disabled={idx === categories.length - 1}
                             className={`px-2 py-1 rounded text-sm ${idx === categories.length - 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                           >
                             ⬇️
                           </button>
                           <button 
-                            onClick={() => setEditingCategoryId(cat.rowid)}
+                            onClick={() => setEditingCategoryId(cat.id)}
                             className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
                           >
                             ✏️ Sửa
                           </button>
                           <button 
-                            onClick={() => deleteCategory(cat.rowid)}
+                            onClick={() => deleteCategory(cat.id)}
                             className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
                           >
                             🗑️ Xóa

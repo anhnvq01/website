@@ -15,6 +15,14 @@ import Search from './pages/Search'
 import Promo from './pages/Promo'
 import OrderGuide from './pages/OrderGuide'
 import OrderLookup from './pages/OrderLookup'
+import ReturnPolicy from './pages/ReturnPolicy'
+import ShippingPolicy from './pages/ShippingPolicy'
+
+// Helper to add cache-busting timestamp to image URLs
+function addTimestampToUrl(url) {
+  if (!url) return url
+  return url + (url.includes('?') ? '&' : '?') + 't=' + Date.now()
+}
 
 function SearchBox() {
   const [query, setQuery] = useState('')
@@ -82,16 +90,33 @@ function CartIcon() {
       }
     }
     
+    // Handle product updates from admin
+    const handleProductUpdate = async (event) => {
+      const updatedProductId = event.detail?.productId
+      if (updatedProductId) {
+        try {
+          const updatedProduct = await Api.product(updatedProductId)
+          setProducts(prev => ({ ...prev, [updatedProductId]: updatedProduct }))
+          console.log('Updated product in cart preview:', updatedProductId)
+        } catch(err) {
+          console.error('Failed to reload product', updatedProductId, err)
+        }
+      }
+    }
+    
     updateCart()
     // Listen for cart updates
     window.addEventListener('cartUpdated', updateCart)
+    // Listen for product updates (when admin updates a product)
+    window.addEventListener('productUpdated', handleProductUpdate)
     const interval = setInterval(updateCart, 1000)
     
     return () => {
       window.removeEventListener('cartUpdated', updateCart)
+      window.removeEventListener('productUpdated', handleProductUpdate)
       clearInterval(interval)
     }
-  }, [])
+  }, [products])
   
   const subtotal = cartItems.reduce((s, item) => {
     if (item.qty <= 0) return s
@@ -104,8 +129,8 @@ function CartIcon() {
   
   return (
     <div className="relative group">
-      <Link to="/cart" className={`icon-btn relative ${animate ? 'animate-bounce-scale' : ''}`} title="Giỏ hàng">
-        🛒
+      <Link to="/cart" className={`icon-btn relative flex items-center justify-center ${animate ? 'animate-bounce-scale' : ''}`} title="Giỏ hàng">
+        <span className="text-base sm:text-lg lg:text-xl flex-shrink-0">🛒</span>
         {totalQty > 0 && <span className="count">{totalQty}</span>}
       </Link>
       
@@ -124,7 +149,10 @@ function CartIcon() {
                 {cartItems.filter(item => item.qty > 0).map(item => {
                   const product = products[item.id]
                   const price = product ? (product.promo_price || product.price) : 0
-                  const image = product?.images?.[0] || product?.image || 'https://via.placeholder.com/60'
+                  // Prefer main image, fallback gallery[0]
+                  let image = product?.image || product?.images?.[0] || 'https://via.placeholder.com/60'
+                  // Add timestamp to bypass cache when displaying
+                  image = addTimestampToUrl(image)
                   
                   return (
                     <div key={item.id} className="p-3 hover:bg-gray-50 transition-colors">
@@ -208,7 +236,7 @@ function ScrollToTop() {
       </button>
       
       <a
-        href="https://m.me/dacsansachtaybac"
+        href="https://m.me/banlangdstb"
         target="_blank"
         rel="noopener noreferrer"
         className="fixed bottom-40 right-8 z-50 w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 animate-bounce flex items-center justify-center text-white"
@@ -253,7 +281,14 @@ function App(){
     checkToken()
     const onStorage = () => checkToken()
     window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
+    
+    // Check token every 5 seconds to detect expiration
+    const interval = setInterval(checkToken, 5000)
+    
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      clearInterval(interval)
+    }
   }, [])
 
   // Load categories from API
@@ -313,7 +348,7 @@ function App(){
               <a href="tel:0989948583" className="hidden sm:inline font-semibold whitespace-nowrap text-xs sm:text-sm hover:scale-105 transition-transform">
                 📞 098.994.8583
               </a>
-              <a href="#" className="hidden md:inline hover:scale-105 transition-transform">Facebook</a>
+              <a href="https://www.facebook.com/banlangdstb" target="_blank" rel="noopener noreferrer" className="hidden md:inline hover:scale-105 transition-transform">Facebook</a>
               {!isLoggedIn && (
                 <Link to="/admin" className="inline bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-full text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap">🔑 Đăng nhập</Link>
               )}
@@ -326,17 +361,17 @@ function App(){
         {/* Main header (fixed below topbar) */}
         <div ref={headerRef} className="main-header" style={{ position: 'fixed', top: `${topbarHeight}px`, left:0, right:0, zIndex: 45 }}>
             <div className="container mx-auto px-4 py-3 lg:py-4">
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-4 lg:gap-8 flex-1 min-w-0">
+              <div className="flex items-center justify-between w-full gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 xl:gap-6 flex-1">
                   <button className="xl:hidden p-2 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0" onClick={()=>setMobileOpen(v=>!v)} aria-label="Menu">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-6 h-6 text-green-800">
                       <path fill="currentColor" d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z" />
                     </svg>
                   </button>
-                  <Link to="/" className="logo">Đặc Sản Sạch Tây Bắc</Link>
+                  <Link to="/" className="logo flex-shrink-0">Đặc Sản Sạch Tây Bắc</Link>
                   
                   {/* Main navigation next to logo - desktop only */}
-                  <nav className="hidden xl:flex gap-4 xl:gap-6 items-center">
+                  <nav className="hidden xl:flex gap-1 xl:gap-2 items-center">
                     <Link to="/" className="nav-link whitespace-nowrap">Trang Chủ</Link>
                     <Link to="/info" className="nav-link whitespace-nowrap">Giới Thiệu</Link>
                   </nav>
@@ -366,13 +401,13 @@ function App(){
                   <Link to="/order-lookup" className="hidden xl:block nav-link whitespace-nowrap">Tra Cứu Đơn Hàng</Link>
                 </div>
 
-                <div className="flex items-center gap-2 sm:gap-3 xl:gap-4 flex-shrink-0">
-                  <div className="hidden xl:block w-64 flex-shrink-0">
+                <div className="flex items-center gap-1 sm:gap-2 lg:gap-3 flex-shrink-0">
+                  <div className="hidden xl:block w-56 2xl:w-64 flex-shrink-0">
                     <SearchBox />
                   </div>
                   {isLoggedIn && (
-                    <Link to="/admin" className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-full hover:from-green-700 hover:to-green-800 shadow-md hover:shadow-lg transition-all text-sm" title="Quản trị">
-                      ⚙️ <span className="font-semibold hidden sm:inline">Admin</span>
+                    <Link to="/admin" className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-full hover:from-green-700 hover:to-green-800 shadow-md hover:shadow-lg transition-all text-xs sm:text-sm font-semibold whitespace-nowrap" title="Quản trị">
+                      ⚙️ <span className="hidden sm:inline">Admin</span>
                     </Link>
                   )}
                   <CartIcon />
@@ -453,6 +488,8 @@ function App(){
               <Route path="/order-guide" element={<OrderGuide/>} />
               <Route path="/promo" element={<Promo/>} />
               <Route path="/search" element={<Search/>} />
+              <Route path="/return-policy" element={<ReturnPolicy/>} />
+              <Route path="/shipping-policy" element={<ShippingPolicy/>} />
             </Routes>
           </PageWrapper>
         </main>
@@ -464,11 +501,11 @@ function App(){
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
               {/* Brand info */}
               <div>
-                <h3 className="text-xl font-bold text-orange-600 mb-3">🦕 Đặc Sản Sạch Tây Bắc</h3>
+                <h3 className="text-xl font-bold text-orange-600 mb-3">Đặc Sản Sạch Tây Bắc</h3>
                 <p className="text-gray-600 text-sm mb-3">Nơi cung cấp đặc sản Tây Bắc sạch, chất lượng cao.</p>
-                <p className="text-gray-600 text-sm mb-1">📍 Tây Bắc, Việt Nam</p>
+                <p className="text-gray-600 text-sm mb-1">📍  Tây Bắc, Việt Nam</p>
                 <p className="text-gray-600 text-sm mb-1">📞 098.994.8583</p>
-                <p className="text-gray-600 text-sm">✉️ contact@taybac.vn</p>
+                <p className="text-gray-600 text-sm">✉️ contactdsstb@gmail.com</p>
               </div>
               {/* Links */}
               <div>
@@ -482,8 +519,8 @@ function App(){
               <div>
                 <h4 className="font-semibold text-gray-800 mb-3">Chính sách</h4>
                 <ul className="space-y-2 text-sm">
-                  <li><a href="#" className="text-gray-600 hover:text-orange-600">Chính sách đổi trả</a></li>
-                  <li><a href="#" className="text-gray-600 hover:text-orange-600">Chính sách vận chuyển</a></li>
+                  <li><Link to="/return-policy" className="text-gray-600 hover:text-orange-600">Chính sách đổi trả</Link></li>
+                  <li><Link to="/shipping-policy" className="text-gray-600 hover:text-orange-600">Chính sách vận chuyển</Link></li>
                 </ul>
               </div>
               <div>
@@ -491,13 +528,13 @@ function App(){
                 <p className="text-sm text-gray-600 mb-3">Hotline: <a href="tel:098.994.8583" className="text-orange-600 font-semibold">098.994.8583</a></p>
                 <p className="text-sm text-gray-600 mb-3">Hoặc liên hệ qua Messenger và Zalo</p>
                 <div className="flex gap-3">
-                  <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition-colors" title="Facebook">
+                  <a href="https://www.facebook.com/banlangdstb" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition-colors" title="Facebook">
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                   </a>
                   <a href="https://zalo.me/0989948583" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center hover:shadow-lg transition-all" title="Zalo">
                     <img src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765269710/taybac/xuq5f34uoemmmxj2xh06.png" alt="Zalo" className="w-8 h-8 object-contain" />
                   </a>
-                  <a href="https://m.me/dacsansachtaybac" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center hover:from-blue-600 hover:to-purple-700 transition-all" title="Messenger">
+                  <a href="https://m.me/banlangdstb" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center hover:from-blue-600 hover:to-purple-700 transition-all" title="Messenger">
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.912 1.446 5.51 3.707 7.197V22l3.475-1.908c.928.256 1.907.393 2.918.393 5.523 0 10-4.145 10-9.242C22 6.145 17.523 2 12 2zm.993 12.492l-2.548-2.718-4.973 2.718 5.467-5.799 2.61 2.718 4.911-2.718-5.467 5.799z"/></svg>
                   </a>
                 </div>

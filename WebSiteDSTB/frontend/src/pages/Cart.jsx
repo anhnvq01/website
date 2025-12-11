@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Api from '../services/api'
 
+// Helper to add cache-busting timestamp to image URLs
+function addTimestampToUrl(url) {
+  if (!url) return url
+  return url + (url.includes('?') ? '&' : '?') + 't=' + Date.now()
+}
+
 export default function Cart(){
   const [items, setItems] = useState([])
   const [products, setProducts] = useState({})
@@ -45,6 +51,22 @@ export default function Cart(){
       setLoading(false)
     }
   },[])
+
+  // Refresh product data if admin updates a product while cart is open
+  useEffect(() => {
+    const handleProductUpdate = async (event) => {
+      const updatedProductId = event.detail?.productId
+      if (!updatedProductId) return
+      try {
+        const product = await Api.product(updatedProductId)
+        setProducts(prev => ({ ...prev, [updatedProductId]: product }))
+      } catch (err) {
+        console.error('Failed to refresh product in cart', updatedProductId, err)
+      }
+    }
+    window.addEventListener('productUpdated', handleProductUpdate)
+    return () => window.removeEventListener('productUpdated', handleProductUpdate)
+  }, [])
   
   function updateQty(id, qty){
     const qtyNum = Number(qty) || 0
@@ -124,7 +146,10 @@ export default function Cart(){
               {items.map((it, idx) => {
                 const product = products[it.id]
                 const price = product ? (product.promo_price || product.price) : 0
-                const image = product?.images?.[0] || product?.image || 'https://via.placeholder.com/100'
+                  // Prefer main image field; fallback to gallery[0]
+                  let image = product?.image || product?.images?.[0] || 'https://via.placeholder.com/100'
+                  // Add timestamp to bypass cache
+                  image = addTimestampToUrl(image)
                 const itemTotal = price * it.qty
                 
                 return (

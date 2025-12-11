@@ -209,15 +209,27 @@ a, button, .product-card {
 /* ===== ICON & BADGE STYLES ===== */
 .icon-btn { 
   position: relative;
-  font-size: 1.25rem;
   background: white;
   border: 2px solid #e8e8e8;
-  padding: 0.5rem;
+  padding: 0.35rem 0.5rem;
   border-radius: 12px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   transition: all 0.3s ease;
+  min-width: 40px;
+  min-height: 40px;
+  text-decoration: none;
+  overflow: visible;
+}
+
+@media (min-width: 768px) {
+  .icon-btn {
+    padding: 0.5rem 0.75rem;
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 .icon-btn:hover {
@@ -232,16 +244,29 @@ a, button, .product-card {
   right: -6px;
   background: linear-gradient(135deg, #ff6b4a 0%, #ff8c5a 100%);
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  min-width: 20px;
-  height: 20px;
+  min-width: 18px;
+  height: 18px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 3px 8px rgba(255,107,74,0.4);
   animation: bounce 2s infinite;
+  border: 2px solid white;
+  z-index: 10;
+  overflow: visible;
+}
+
+@media (min-width: 768px) {
+  .icon-btn .count {
+    min-width: 20px;
+    height: 20px;
+    font-size: 11px;
+    top: -6px;
+    right: -6px;
+  }
 }
 
 @keyframes bounce {
@@ -641,4 +666,21 @@ a, button, .product-card {
 
 .animate-bounce-scale {
   animation: bounce-scale 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Hide crop tool grid overlay - ensure canvas never leaks out */
+canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Explicitly hide canvas if it escapes modal */
+body canvas {
+  display: none;
+}
+
+/* Only show canvas inside the fixed modal */
+.fixed.inset-0 canvas {
+  display: block !important;
 }

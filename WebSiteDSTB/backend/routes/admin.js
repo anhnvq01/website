@@ -53,15 +53,8 @@ function ensureImagesArray(value, fallback) {
       )
     `).run();
     
-    // Check if default admin exists
-    const admin = await db.prepare('SELECT id FROM users WHERE username = $1').get('admin');
-    if (!admin) {
-      const defaultHash = bcrypt.hashSync('admin123', 10);
-      await db.prepare('INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)').run('admin', defaultHash, 'admin');
-      console.log('✅ Default admin account created: admin / admin123');
-    } else {
-      console.log('✅ Admin account already exists');
-    }
+    // Ensure users table exists
+    console.log('✅ Users table initialized');
   } catch (e) {
     console.error('⚠️ Database initialization error:', e.message);
   }
@@ -100,6 +93,90 @@ function auth(req, res, next) {
 
 router.get('/me', auth, (req, res) => {
   res.json({ username: req.user.username });
+});
+
+// Get all admins
+router.get('/admins', auth, async (req, res) => {
+  try {
+    const admins = await db.prepare('SELECT id, username, role, created_at FROM users ORDER BY created_at DESC').all();
+    res.json(admins);
+  } catch (error) {
+    console.error('Error fetching admins:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Create new admin
+router.post('/admins', auth, async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required' });
+    }
+    
+    const existingUser = await db.prepare('SELECT id FROM users WHERE username = $1').get(username);
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+    
+    const passwordHash = bcrypt.hashSync(password, 10);
+    const result = await db.prepare('INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at').run(username, passwordHash, role || 'admin');
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Error creating admin:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update admin
+router.put('/admins/:id', auth, async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+    const id = req.params.id;
+    
+    if (!username) {
+      return res.status(400).json({ error: 'Username required' });
+    }
+    
+    // Check if username is already taken by another user
+    const existingUser = await db.prepare('SELECT id FROM users WHERE username = $1 AND id != $2').get(username, id);
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+    
+    if (password) {
+      const passwordHash = bcrypt.hashSync(password, 10);
+      await db.prepare('UPDATE users SET username = $1, password_hash = $2, role = $3 WHERE id = $4').run(username, passwordHash, role || 'admin', id);
+    } else {
+      await db.prepare('UPDATE users SET username = $1, role = $2 WHERE id = $3').run(username, role || 'admin', id);
+    }
+    
+    const updated = await db.prepare('SELECT id, username, role, created_at FROM users WHERE id = $1').get(id);
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating admin:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete admin
+router.delete('/admins/:id', auth, async (req, res) => {
+  try {
+    const id = req.params.id;
+    
+    // Prevent deleting the last admin (if needed)
+    const adminCount = await db.prepare('SELECT COUNT(*) as count FROM users').get();
+    if (adminCount.count <= 1) {
+      return res.status(400).json({ error: 'Cannot delete the last admin account' });
+    }
+    
+    await db.prepare('DELETE FROM users WHERE id = $1').run(id);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error deleting admin:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 const toShipFlag = (value) => {

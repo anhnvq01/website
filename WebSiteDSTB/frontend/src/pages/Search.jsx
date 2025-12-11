@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import Api from '../services/api'
 
+// Helper to add cache-busting timestamp to image URLs
+function addTimestampToUrl(url) {
+  if (!url) return url
+  return url + (url.includes('?') ? '&' : '?') + 't=' + Date.now()
+}
+
 export default function Search() {
   const [searchParams] = useSearchParams()
   const query = searchParams.get('q') || ''
@@ -43,7 +49,12 @@ export default function Search() {
       setLoading(true)
       try {
         const results = await Api.products(query)
-        setItems(filterByQuery(results, query))
+          const withTimestamps = results.map(p => ({
+            ...p,
+            image: addTimestampToUrl(p.image),
+            images: Array.isArray(p.images) ? p.images.map(img => addTimestampToUrl(img)) : []
+          }))
+          setItems(filterByQuery(withTimestamps, query))
       } catch (err) {
         console.error('Search error:', err)
         setItems([])
@@ -90,7 +101,7 @@ export default function Search() {
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
           {items.map(p => {
             const discountPercent = p.promo_price && p.promo_price < p.price ? Math.round((p.price - p.promo_price) / p.price * 100) : 0
             return (

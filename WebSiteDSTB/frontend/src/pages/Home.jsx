@@ -4,6 +4,12 @@ import { Link } from 'react-router-dom'
 
 const normalizeText = (str) => (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
+// Helper to add cache-busting timestamp to image URLs
+function addTimestampToUrl(url) {
+  if (!url) return url
+  return url + (url.includes('?') ? '&' : '?') + 't=' + Date.now()
+}
+
 // Loading Skeleton Component
 function ProductCardSkeleton() {
   return (
@@ -61,8 +67,10 @@ export function ProductCard({ product, showSoldCount = true }) {
             return <div className="w-full aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center"><span className="text-gray-400 text-4xl">📦</span></div>
           }
           const img = (typeof product.image === 'string') ? product.image : ''
-          const src = img.startsWith('http') || img.startsWith('/') ? img : `/images/products/${img}`
-          return <img src={src} alt={product.name} className="product-image w-full aspect-square object-cover" />
+          // Add timestamp to bypass cache when displaying
+          const src = (img.startsWith('http') || img.startsWith('/') ? img : `/images/products/${img}`)
+          const displayUrl = addTimestampToUrl(src)
+          return <img src={displayUrl} alt={product.name} className="product-image w-full aspect-square object-cover" />
         })()}
         {discountPercent > 0 && (
           <div className="absolute top-3 left-3 price-badge bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-full">
@@ -70,7 +78,7 @@ export function ProductCard({ product, showSoldCount = true }) {
           </div>
         )}
       </div>
-      <div className="p-4 flex flex-col flex-1">
+      <div className="p-3 sm:p-4 flex flex-col flex-1 min-w-0">
         <span 
           onClick={(e) => {
             e.stopPropagation()
@@ -80,14 +88,14 @@ export function ProductCard({ product, showSoldCount = true }) {
         >
           {product.category}
         </span>
-        <h3 className="font-bold text-gray-800 line-clamp-2 mb-2 group-hover:text-green-700 transition-colors">{product.name}</h3>
+        <h3 className="font-bold text-gray-800 line-clamp-2 mb-2 group-hover:text-green-700 transition-colors text-sm sm:text-base">{product.name}</h3>
         {showSoldCount && (
           <div className="text-xs text-gray-500 mb-1">Đã bán: <span className="font-semibold text-orange-600">{product.sold_count || 0}</span></div>
         )}
-        <div className="mt-auto">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1">
-              <div className="text-xl font-bold text-orange-600">{salePrice.toLocaleString()}₫</div>
+        <div className="mt-auto pt-2 min-w-0">
+          <div className="flex flex-col gap-2">
+            <div className="min-w-0">
+              <div className="text-lg sm:text-xl font-bold text-orange-600 break-words">{salePrice.toLocaleString()}₫</div>
               {discountPercent > 0 && (
                 <div className="text-xs text-gray-400 line-through">{oldPrice.toLocaleString()}₫</div>
               )}
@@ -105,11 +113,11 @@ export function ProductCard({ product, showSoldCount = true }) {
                 // Trigger cart update event with animation
                 window.dispatchEvent(new CustomEvent('cartUpdated', { detail: { animate: true } }))
               }} 
-              className="flex items-center gap-1 bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800 hover:scale-105 transition-transform px-4 py-3 rounded-lg font-semibold text-sm whitespace-nowrap flex-shrink-0 min-h-[44px]"
+              className="w-full flex items-center justify-center gap-1 bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800 hover:scale-105 transition-transform px-2 sm:px-3 py-2 sm:py-3 rounded-lg font-semibold text-xs sm:text-sm min-h-[40px] sm:min-h-[44px]"
               aria-label="Add to cart"
               title="Thêm sản phẩm vào giỏ"
             >
-              <span className="text-lg">🛒</span>
+              <span className="text-base sm:text-lg flex-shrink-0">🛒</span>
               <span className="hidden sm:inline">Thêm vào giỏ</span>
             </button>
           </div>
@@ -129,11 +137,11 @@ export default function Home()
   const [categoryList, setCategoryList] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [slide, setSlide] = useState(0)
+  const [loadedSlides, setLoadedSlides] = useState([false, false, false])
   const slides = [
-    { title: 'Cùng Đặc Sản Sạch Tây Bắc', subtitle: 'Khám phá hương vị núi rừng', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765269706/taybac/ybhmz22eytvkj4gnufl2.jpg', showText: true },
-    { title: 'Sản phẩm chất lượng cao', subtitle: 'Rau rừng - Thịt gác bếp - Rượu vùng cao', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765269708/taybac/zmh4fqbfcqgfrchryxty.jpg', showText: true },
-    { title: 'Ưu đãi mỗi ngày', subtitle: 'Giảm giá, combo & quà tặng', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765269708/taybac/uvhbywzazi19tcnq3l7w.jpg', showText: true },
-    { title: '', subtitle: '', image: '/images/bg-4.png', showText: false }
+    { title: 'Cùng Đặc Sản Sạch Tây Bắc', subtitle: 'Khám phá hương vị núi rừng', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765442437/1_balftq.png', showText: true },
+    { title: 'Sản phẩm chất lượng cao', subtitle: 'Rau rừng - Thịt gác bếp - Rượu vùng cao', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765269708/taybac/uvhbywzazi19tcnq3l7w.jpg', showText: true },
+    { title: '', subtitle: '', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765442438/2_tppbos.png', showText: false }
   ]
   const tetCategoryName = 'Tết Nguyên Đán'
   const MAX_TOP = 10
@@ -183,7 +191,48 @@ export default function Home()
         setIsLoading(false)
       }
     }
+    
+    const handleProductUpdate = async (event) => {
+      // Reload all products when admin updates a product
+      try {
+        const allProducts = await Api.products()
+        setItems(allProducts)
+        
+        // Update all sections
+        const sorted = [...allProducts].sort((a, b) => (b.sold_count || 0) - (a.sold_count || 0))
+        setTopSelling(sorted.slice(0, MAX_TOP))
+
+        const promoSorted = [...allProducts]
+          .filter(p => p.promo_price && p.promo_price < p.price)
+          .map(p => ({
+            ...p,
+            _discount: Math.round((p.price - p.promo_price) / p.price * 100)
+          }))
+          .sort((a, b) => b._discount - a._discount)
+        setHotPromo(promoSorted.slice(0, MAX_PROMO))
+
+        const tetList = allProducts.filter(p => p.is_tet === 1 || p.is_tet === true)
+        setTetProducts(tetList.slice(0, MAX_TET))
+        
+        const grouped = {}
+        const orderedCats = categoryList || defaultCategories
+        orderedCats.forEach(cat => {
+          grouped[cat] = allProducts.filter(p => p.category === cat).slice(0, 12)
+        })
+        setCategoryProducts(grouped)
+        console.log('Updated product on home page:', event.detail?.productId)
+      } catch(err) {
+        console.error('Failed to update product on home:', err)
+      }
+    }
+    
     load()
+    // Listen for product updates from admin
+    window.addEventListener('productUpdated', handleProductUpdate)
+    
+    return () => {
+      window.removeEventListener('productUpdated', handleProductUpdate)
+    }
   },[])
   
   useEffect(()=>{
@@ -199,12 +248,26 @@ export default function Home()
         <div className="hero-slider relative w-full h-full overflow-hidden rounded-b-2xl">
           {slides.map((s, i)=> (
             <div key={i} className={"hero-slide absolute inset-0 transition-opacity duration-1000 " + (i===slide ? 'opacity-100 z-10' : 'opacity-0 z-0')}>
+              {/* Image with graceful loading to avoid white flash on slow networks */}
               <img 
                 src={s.image} 
                 alt={s.title} 
-                className="hero-image absolute inset-0 w-full h-full object-cover"
+                className={"hero-image absolute inset-0 w-full h-full object-cover transition-opacity duration-500 " + (loadedSlides[i] ? 'opacity-100' : 'opacity-0')}
                 loading={i === 0 ? "eager" : "lazy"}
+                onLoad={() => setLoadedSlides(prev => {
+                  const next = [...prev]
+                  next[i] = true
+                  return next
+                })}
               />
+              {!loadedSlides[i] && (
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-emerald-100 to-emerald-50 flex items-center justify-center animate-pulse">
+                  <div className="flex items-center gap-3 text-emerald-700 font-semibold bg-white/80 px-4 py-2 rounded-full shadow">
+                    <span className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    <span>Đang tải hình ảnh...</span>
+                  </div>
+                </div>
+              )}
               {s.showText && (
                 <div className="absolute inset-0 flex items-center justify-start pl-8 md:pl-16 lg:pl-24">
                   <div className="max-w-3xl animate-fade-in">
@@ -272,7 +335,7 @@ export default function Home()
               </Link>
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
             {isLoading ? (
               <SectionSkeletons count={8} />
             ) : (
@@ -287,7 +350,7 @@ export default function Home()
         <div className="container mx-auto px-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-10">
             <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-800 flex items-center gap-2 md:gap-3">
-              <span className="text-3xl md:text-4xl">🎉</span>
+              <img src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765438365/firework_n0lvyh.png" alt="Tết" className="w-8 h-8 md:w-10 md:h-10" />
               <span>Sản phẩm phục vụ Tết</span>
             </h2>
             {!isLoading && (
@@ -300,13 +363,13 @@ export default function Home()
             )}
           </div>
           {isLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
               <SectionSkeletons count={8} />
             </div>
           ) : tetProducts.length === 0 ? (
             <div className="text-center py-10 text-gray-600">Chưa có sản phẩm Tết được gắn nhãn.</div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
               {tetProducts.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
             </div>
           )}
@@ -317,15 +380,15 @@ export default function Home()
       <div className="container mx-auto p-4 pt-16">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-3">
-            <span className="text-3xl">🔥</span>
+            <img src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765439349/best-seller_dzcwif.png" alt="Best Seller" className="w-8 h-8 object-contain" />
             Sản phẩm bán chạy nhất
           </h2>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
           {isLoading ? (
-            <SectionSkeletons count={10} />
+            <SectionSkeletons count={12} />
           ) : (
-            topSelling.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)
+            items.map(p => <ProductCard key={p.id} product={p} />)
           )}
         </div>
       </div>
@@ -337,7 +400,11 @@ export default function Home()
             <div className="container mx-auto px-4">
               <div className="flex items-center justify-between mb-10">
                 <h2 className="text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-3">
-                  <span className="text-4xl">{['🥓','🔥','🌰','🌿','🍷','🌾'][idx]}</span>
+                  {cat === 'Dược liệu' ? (
+                    <img src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765439455/mortar_jrxyue.png" alt="Dược liệu" className="w-10 h-10 object-contain" />
+                  ) : (
+                    <span className="text-4xl">{['🥓','🔥','🌰','🌿','🍷','🌾'][idx]}</span>
+                  )}
                   {cat}
                 </h2>
                 <Link to={`/category/${cat}`} className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
@@ -347,7 +414,7 @@ export default function Home()
                   </svg>
                 </Link>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
                 {categoryProducts[cat].map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
               </div>
             </div>
