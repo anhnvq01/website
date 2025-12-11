@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import Api from '../services/api'
 
+// Helper to add cache-busting timestamp to image URLs
+function addTimestampToUrl(url) {
+  if (!url) return url
+  return url + (url.includes('?') ? '&' : '?') + 't=' + Date.now()
+}
+
 export default function Product(){
   const { id } = useParams()
   const [p, setP] = useState(null)
@@ -31,6 +37,22 @@ export default function Product(){
         setError(err.message || 'Không thể tải sản phẩm')
       })
   },[id])
+
+  // If product is updated in admin, refetch when viewing its detail
+  useEffect(() => {
+    const handleProductUpdate = async (event) => {
+      const updatedProductId = event.detail?.productId
+      if (updatedProductId !== id) return
+      try {
+        const product = await Api.product(id)
+        setP(product)
+      } catch(err) {
+        console.error('Failed to refresh product detail', err)
+      }
+    }
+    window.addEventListener('productUpdated', handleProductUpdate)
+    return () => window.removeEventListener('productUpdated', handleProductUpdate)
+  }, [id])
   function addToCart(){
     const cart = JSON.parse(localStorage.getItem('tb_cart')||'[]')
     const found = cart.find(x=>x.id===id)
@@ -57,7 +79,19 @@ export default function Product(){
   
   if(error) return <div className="container mx-auto p-4 text-red-600 font-semibold">Lỗi: {error}</div>
   if(!p) return <div className="container mx-auto p-4 text-gray-600">Đang tải sản phẩm...</div>
-  const images = Array.isArray(p.images) && p.images.length ? p.images : (p.image ? [p.image] : [])
+    // Prefer main image first, then gallery, removing duplicates
+    const baseImages = (() => {
+      const arr = []
+      if (p.image) arr.push(p.image)
+      if (Array.isArray(p.images)) {
+        for (const img of p.images) {
+          if (img && !arr.includes(img)) arr.push(img)
+        }
+      }
+      return arr
+    })()
+    // Add timestamp to all images to bypass cache
+    const images = baseImages.map(img => addTimestampToUrl(img))
   return (
     <div className="container mx-auto p-4 py-8">
       {/* Add to cart notification */}

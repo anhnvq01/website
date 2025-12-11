@@ -1,6 +1,20 @@
 import axios from 'axios';
 const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000/api' });
 
+// Add response interceptor to handle 401 errors (token expired)
+API.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid, remove it from localStorage
+      localStorage.removeItem('admin_token')
+      // Dispatch event to update UI
+      window.dispatchEvent(new Event('storage'))
+    }
+    return Promise.reject(error)
+  }
+)
+
 export default {
   // Products (public)
   products: (q, category) => API.get('/products', { params: { q, category } }).then(r => r.data),
