@@ -227,7 +227,7 @@ function ScrollToTop() {
         aria-label="Chat Zalo"
         title="Chat với chúng tôi qua Zalo"
       >
-        <img src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765267771/taybac/x7kxl9hzzgfxruofoxoa.png" alt="Zalo" className="w-10 h-10 object-contain" />
+        <img src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765269710/taybac/xuq5f34uoemmmxj2xh06.png" alt="Zalo" className="w-10 h-10 object-contain" />
       </a>
     </>
   )
@@ -325,56 +325,58 @@ function App(){
         </div>
         {/* Main header (fixed below topbar) */}
         <div ref={headerRef} className="main-header" style={{ position: 'fixed', top: `${topbarHeight}px`, left:0, right:0, zIndex: 45 }}>
-            <div className="container mx-auto flex items-center justify-between px-4 py-3 lg:py-4">
-              <div className="flex items-center gap-4 lg:gap-8 flex-1 min-w-0">
-                <button className="xl:hidden p-2 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0" onClick={()=>setMobileOpen(v=>!v)} aria-label="Menu">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-6 h-6 text-green-800">
-                    <path fill="currentColor" d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z" />
-                  </svg>
-                </button>
-                <Link to="/" className="logo">Đặc Sản Sạch Tây Bắc</Link>
-                
-                {/* Main navigation next to logo - desktop only */}
-                <nav className="hidden xl:flex gap-4 xl:gap-6 items-center">
-                  <Link to="/" className="nav-link whitespace-nowrap">Trang Chủ</Link>
-                  <Link to="/info" className="nav-link whitespace-nowrap">Giới Thiệu</Link>
-                </nav>
-                
-                {/* Products dropdown - only on xl screens */}
-                <div 
-                  className="hidden xl:block relative"
-                  onMouseEnter={() => setProductOpen(true)}
-                  onMouseLeave={() => setProductOpen(false)}
-                >
-                  <button className="nav-link flex items-center gap-1 whitespace-nowrap">
-                    Sản Phẩm
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            <div className="container mx-auto px-4 py-3 lg:py-4">
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-4 lg:gap-8 flex-1 min-w-0">
+                  <button className="xl:hidden p-2 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0" onClick={()=>setMobileOpen(v=>!v)} aria-label="Menu">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-6 h-6 text-green-800">
+                      <path fill="currentColor" d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z" />
                     </svg>
                   </button>
-                  <div className={`absolute left-0 top-full mt-2 min-w-[240px] max-w-xs transition-all duration-200 z-[9999] ${productOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
-                    <div className="bg-white rounded-md shadow-2xl py-1 border border-gray-100">
-                      {categories.map(cat => (
-                        <Link key={cat} to={`/category/${cat}`} className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-700">{cat}</Link>
-                      ))}
+                  <Link to="/" className="logo">Đặc Sản Sạch Tây Bắc</Link>
+                  
+                  {/* Main navigation next to logo - desktop only */}
+                  <nav className="hidden xl:flex gap-4 xl:gap-6 items-center">
+                    <Link to="/" className="nav-link whitespace-nowrap">Trang Chủ</Link>
+                    <Link to="/info" className="nav-link whitespace-nowrap">Giới Thiệu</Link>
+                  </nav>
+                  
+                  {/* Products dropdown - only on xl screens */}
+                  <div 
+                    className="hidden xl:block relative"
+                    onMouseEnter={() => setProductOpen(true)}
+                    onMouseLeave={() => setProductOpen(false)}
+                  >
+                    <button className="nav-link flex items-center gap-1 whitespace-nowrap">
+                      Sản Phẩm
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    <div className={`absolute left-0 top-full mt-2 min-w-[240px] max-w-xs transition-all duration-200 z-[9999] ${productOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+                      <div className="bg-white rounded-md shadow-2xl py-1 border border-gray-100">
+                        {categories.map(cat => (
+                          <Link key={cat} to={`/category/${cat}`} className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-700">{cat}</Link>
+                        ))}
+                      </div>
                     </div>
                   </div>
+                  
+                  {/* Tra Cứu Đơn Hàng after Products dropdown */} 
+                  <Link to="/order-lookup" className="hidden xl:block nav-link whitespace-nowrap">Tra Cứu Đơn Hàng</Link>
                 </div>
-                
-                {/* Tra Cứu Đơn Hàng after Products dropdown */} 
-                <Link to="/order-lookup" className="hidden xl:block nav-link whitespace-nowrap">Tra Cứu Đơn Hàng</Link>
-              </div>
 
-              <div className="flex items-center gap-2 sm:gap-3 xl:gap-4 flex-shrink-0">
-                <div className="hidden xl:block w-64">
-                  <SearchBox />
+                <div className="flex items-center gap-2 sm:gap-3 xl:gap-4 flex-shrink-0">
+                  <div className="hidden xl:block w-64 flex-shrink-0">
+                    <SearchBox />
+                  </div>
+                  {isLoggedIn && (
+                    <Link to="/admin" className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-full hover:from-green-700 hover:to-green-800 shadow-md hover:shadow-lg transition-all text-sm" title="Quản trị">
+                      ⚙️ <span className="font-semibold hidden sm:inline">Admin</span>
+                    </Link>
+                  )}
+                  <CartIcon />
                 </div>
-                {isLoggedIn && (
-                  <Link to="/admin" className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-full hover:from-green-700 hover:to-green-800 shadow-md hover:shadow-lg transition-all text-sm" title="Quản trị">
-                    ⚙️ <span className="font-semibold hidden sm:inline">Admin</span>
-                  </Link>
-                )}
-                <CartIcon />
               </div>
             </div>
 
@@ -493,7 +495,7 @@ function App(){
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                   </a>
                   <a href="https://zalo.me/0989948583" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center hover:shadow-lg transition-all" title="Zalo">
-                    <img src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765267771/taybac/x7kxl9hzzgfxruofoxoa.png" alt="Zalo" className="w-8 h-8 object-contain" />
+                    <img src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765269710/taybac/xuq5f34uoemmmxj2xh06.png" alt="Zalo" className="w-8 h-8 object-contain" />
                   </a>
                   <a href="https://m.me/dacsansachtaybac" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center hover:from-blue-600 hover:to-purple-700 transition-all" title="Messenger">
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.912 1.446 5.51 3.707 7.197V22l3.475-1.908c.928.256 1.907.393 2.918.393 5.523 0 10-4.145 10-9.242C22 6.145 17.523 2 12 2zm.993 12.492l-2.548-2.718-4.973 2.718 5.467-5.799 2.61 2.718 4.911-2.718-5.467 5.799z"/></svg>

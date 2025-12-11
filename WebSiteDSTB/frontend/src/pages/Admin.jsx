@@ -349,7 +349,12 @@ export default function Admin(){
     try {
       const data = await Api.adminGetOrders(tk)
       console.log('Orders loaded:', data)
-      setOrders(data)
+      // Normalize paid status to boolean
+      const normalizedOrders = data.map(order => ({
+        ...order,
+        paid: !!(order.paid === true || order.paid === 1 || order.paid === '1')
+      }))
+      setOrders(normalizedOrders)
     } catch(e) { if (!handleAuthError(e)) console.error(e) }
   }
 
@@ -396,8 +401,9 @@ export default function Admin(){
         const croppedFile = new File([blob], 'cropped-image.jpg', { type: 'image/jpeg' })
         setUploading(true)
         const result = await Api.adminUploadImage(token, croppedFile)
-        setImagePreview(result.imageUrl)
-        setProductForm(prev => ({...prev, image: result.imageUrl}))
+        const uploadedUrl = result.imageUrl || result.url
+        setImagePreview(uploadedUrl)
+        setProductForm(prev => ({...prev, image: uploadedUrl}))
         setUploadedFile('cropped-image.jpg')
         setShowCropTool(false)
         setCropImage(null)
@@ -406,6 +412,7 @@ export default function Admin(){
         showToast('Tải ảnh thành công!')
       } catch(err) {
         if (!handleAuthError(err)) {
+          console.error('Upload error:', err)
           showToast('Lỗi tải ảnh: ' + (err.response?.data?.error || err.message), 'error')
         }
       } finally {
@@ -578,8 +585,8 @@ export default function Admin(){
         } else {
           updated = await Api.adminMarkOrderPaid(token, order.id)
         }
-        // Cập nhật ngay trong UI
-        const newPaid = updated?.paid !== undefined ? updated.paid : newPaidStatus
+        // Normalize the paid status from API response
+        const newPaid = updated?.paid !== undefined ? !!(updated.paid === true || updated.paid === 1 || updated.paid === '1') : newPaidStatus
         setOrders(prev => prev.map(o => o.id === order.id ? { ...o, paid: newPaid } : o))
         if (selectedOrder && selectedOrder.id === order.id) {
           setSelectedOrder({ ...selectedOrder, paid: newPaid })
@@ -1256,9 +1263,9 @@ export default function Admin(){
                 onChange={e => setFilterCategory(e.target.value)}
                 className="px-4 py-2 border rounded-lg bg-white flex-1 sm:flex-none"
               >
-                <option value="all">🏷️ Tất cả danh mục</option>
+                <option key="all" value="all">🏷️ Tất cả danh mục</option>
                 {categories.map(cat => (
-                  <option key={cat.rowid} value={cat.category}>{cat.category}</option>
+                  <option key={cat.rowid || cat.id || cat.category} value={cat.category}>{cat.category}</option>
                 ))}
               </select>
               <button 
@@ -1482,12 +1489,21 @@ export default function Admin(){
                       const uploadedUrls = []
                       for(const f of files){
                         const res = await Api.adminUploadImage(token, f)
-                        uploadedUrls.push(res.imageUrl)
+                        const uploadedUrl = res.imageUrl || res.url
+                        uploadedUrls.push(uploadedUrl)
                       }
                       const next = [...gallery, ...uploadedUrls]
                       setGallery(next)
                       setProductForm(prev => ({...prev, images: next}))
-                    } catch(err){ showToast('Upload ảnh mô tả thất bại', 'error') } finally { setUploading(false) }
+                      if (!productForm.image && next.length > 0) {
+                        setImagePreview(next[0])
+                        setProductForm(prev => ({...prev, image: next[0]}))
+                      }
+                      showToast(`Đã tải ${uploadedUrls.length} ảnh thành công!`)
+                    } catch(err){ 
+                      console.error('Gallery upload error:', err)
+                      showToast('Upload ảnh mô tả thất bại: ' + (err.response?.data?.error || err.message), 'error') 
+                    } finally { setUploading(false) }
                   }} />
                 </div>
               </div>
@@ -1638,8 +1654,8 @@ export default function Admin(){
                     onChange={e=>setOrderForm({...orderForm, seller: e.target.value})}
                     className="w-full p-2 border rounded"
                   >
-                    <option value="Quang Tâm">Quang Tâm</option>
-                    <option value="Mẹ Hằng">Mẹ Hằng</option>
+                    <option key="seller-qt" value="Quang Tâm">Quang Tâm</option>
+                    <option key="seller-mh" value="Mẹ Hằng">Mẹ Hằng</option>
                   </select>
                 </div>
               </div>
@@ -1679,7 +1695,7 @@ export default function Admin(){
                           onChange={e=>updateOrderItem(i, 'productId', e.target.value)}
                           className="w-full p-2 border rounded text-sm"
                         >
-                          <option value="">-- Chọn sản phẩm hoặc tự thêm --</option>
+                          <option key="product-empty" value="">-- Chọn sản phẩm hoặc tự thêm --</option>
                           {products.map(p => (
                             <option key={p.id} value={p.id}>{p.name} ({(p.promo_price || p.price).toLocaleString()}₫)</option>
                           ))}
@@ -1741,9 +1757,9 @@ export default function Admin(){
                     onChange={e=>setOrderForm({...orderForm, method: e.target.value})}
                     className="w-full p-2 border rounded"
                   >
-                    <option>COD</option>
-                    <option>Bank Transfer</option>
-                    <option>Card</option>
+                    <option key="method-cod">COD</option>
+                    <option key="method-bank">Bank Transfer</option>
+                    <option key="method-card">Card</option>
                   </select>
                 </div>
                 <div>
@@ -1860,12 +1876,12 @@ export default function Admin(){
                     onChange={e => setFilterOrderStatus(e.target.value)}
                     className="w-full px-3 py-2.5 border border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="all">Tất cả trạng thái</option>
-                    <option value="undelivered">⏳ Chưa giao</option>
-                    <option value="delivered">✅ Đã giao</option>
-                    <option value="tomorrow_delivery">📅 Giao ngày mai</option>
-                    <option value="cancelled">❌ Đã hủy</option>
-                    <option value="bom">💣 Bom</option>
+                    <option key="status-all" value="all">Tất cả trạng thái</option>
+                    <option key="status-undelivered" value="undelivered">⏳ Chưa giao</option>
+                    <option key="status-delivered" value="delivered">✅ Đã giao</option>
+                    <option key="status-tomorrow" value="tomorrow_delivery">📅 Giao ngày mai</option>
+                    <option key="status-cancelled" value="cancelled">❌ Đã hủy</option>
+                    <option key="status-bom" value="bom">💣 Bom</option>
                   </select>
                 </div>
                 
@@ -1876,9 +1892,9 @@ export default function Admin(){
                     onChange={e => setFilterSeller(e.target.value)}
                     className="w-full px-3 py-2.5 border border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="all">Tất cả người bán</option>
-                    <option value="Quang Tâm">Quang Tâm</option>
-                    <option value="Mẹ Hằng">Mẹ Hằng</option>
+                    <option key="filter-seller-all" value="all">Tất cả người bán</option>
+                    <option key="filter-seller-qt" value="Quang Tâm">Quang Tâm</option>
+                    <option key="filter-seller-mh" value="Mẹ Hằng">Mẹ Hằng</option>
                   </select>
                 </div>
                 
@@ -1925,7 +1941,7 @@ export default function Admin(){
                 </button>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold text-sm">#{selectedOrder.id}</span>
-                  <span className={`px-3 py-1 rounded-full text-white text-sm ${selectedOrder.paid ? 'bg-green-600' : 'bg-red-500'}`}>
+                  <span className={`px-3 py-1 rounded-full text-white text-sm ${selectedOrder.paid ? 'bg-green-600' : 'bg-red-500'}`}> 
                     {selectedOrder.paid ? '✓ Đã thanh toán' : '✗ Chưa thanh toán'}
                   </span>
                   <span className={`px-3 py-1 rounded-full text-white text-sm ${
@@ -1966,8 +1982,8 @@ export default function Admin(){
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Phương thức</label>
                       <select className="w-full p-2 border rounded" value={selectedOrder.method || 'COD'} onChange={e=>setSelectedOrder(s=>({...s, method: e.target.value}))}>
-                        <option value="COD">COD</option>
-                        <option value="BANK">Chuyển khoản</option>
+                        <option key="detail-method-cod" value="COD">COD</option>
+                        <option key="detail-method-bank" value="BANK">Chuyển khoản</option>
                       </select>
                     </div>
                     <div>
@@ -2063,8 +2079,8 @@ export default function Admin(){
                         }}
                         className="w-full p-2 border rounded-lg bg-white"
                       >
-                        <option value="Quang Tâm">Quang Tâm</option>
-                        <option value="Mẹ Hằng">Mẹ Hằng</option>
+                        <option key="seller-detail-qt" value="Quang Tâm">Quang Tâm</option>
+                        <option key="seller-detail-mh" value="Mẹ Hằng">Mẹ Hằng</option>
                       </select>
                     </div>
                   </div>
@@ -2197,8 +2213,8 @@ export default function Admin(){
                         value={invoiceInfo.method || 'COD'}
                         onChange={e => setEditInvoiceInfo(prev => ({ ...(prev || invoiceInfo), method: e.target.value }))}
                       >
-                        <option value="COD">COD</option>
-                        <option value="BANK">Chuyển khoản</option>
+                        <option key="invoice-method-cod" value="COD">COD</option>
+                        <option key="invoice-method-bank" value="BANK">Chuyển khoản</option>
                       </select>
                     </div>
                     <div>
@@ -2256,13 +2272,13 @@ export default function Admin(){
                                 setEditOrderItems(next)
                               }}
                             >
-                              <option value="">-- Chọn sản phẩm --</option>
+                              <option key="product-select-empty" value="">-- Chọn sản phẩm --</option>
                               {products.map(p => (
-                                <option key={p.id} value={p.id}>
+                                <option key={`product-${p.id}`} value={p.id}>
                                   {p.name} - {(p.promo_price || p.price).toLocaleString()}₫
                                 </option>
                               ))}
-                              <option value="custom">✏️ Nhập tên khác</option>
+                              <option key="product-select-custom" value="custom">✏️ Nhập tên khác</option>
                             </select>
                             {!item.id && (
                               <input
@@ -2523,9 +2539,13 @@ export default function Admin(){
                   if (filterSeller !== 'all' && o.seller !== filterSeller) return false
                   
                   // Filter by date range
-                  const orderDate = new Date(o.createdAt).toISOString().split('T')[0]
-                  if (filterOrderDateFrom && orderDate < filterOrderDateFrom) return false
-                  if (filterOrderDateTo && orderDate > filterOrderDateTo) return false
+                  try {
+                    const orderDate = o.createdAt ? new Date(o.createdAt).toISOString().split('T')[0] : ''
+                    if (filterOrderDateFrom && orderDate && orderDate < filterOrderDateFrom) return false
+                    if (filterOrderDateTo && orderDate && orderDate > filterOrderDateTo) return false
+                  } catch (e) {
+                    console.warn('Invalid date:', o.createdAt)
+                  }
                   
                   return true
                 })
@@ -2552,10 +2572,16 @@ export default function Admin(){
                         {filtered
                           .sort((a, b) => {
                           // Sort by createdAt (newest first)
-                          return new Date(b.createdAt) - new Date(a.createdAt)
+                          try {
+                            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+                            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+                            return dateB - dateA
+                          } catch (e) {
+                            return 0
+                          }
                         })
                           .map(o => (
-                          <tr key={o.id} className="border-b hover:bg-gray-50">
+                          <tr key={`order-${o.id}`} className="border-b hover:bg-gray-50">
                             <td className="px-4 py-2 font-mono text-sm">{o.id}</td>
                             <td className="px-4 py-2">{o.customer_name}</td>
                             <td className="px-4 py-2 text-sm">
@@ -2584,7 +2610,9 @@ export default function Admin(){
                                 </span>
                               </div>
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-600">{new Date(o.createdAt).toLocaleDateString('vi-VN')}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600">
+                              {o.createdAt ? new Date(o.createdAt).toLocaleDateString('vi-VN') : 'N/A'}
+                            </td>
                             <td className="px-4 py-2 text-center">
                               <button 
                                 onClick={async () => {
@@ -2592,12 +2620,14 @@ export default function Admin(){
                                     const fullOrder = await Api.adminGetOrder(token, o.id)
                                     setSelectedOrder({
                                       ...fullOrder,
+                                      paid: !!(fullOrder.paid === true || fullOrder.paid === 1 || fullOrder.paid === '1'),
                                       items_json: mergeSimilarItems(fullOrder.items_json || [])
                                     })
                                   } catch(e) {
                                     console.error('Error loading order:', e)
                                     setSelectedOrder({
                                       ...o,
+                                      paid: !!(o.paid === true || o.paid === 1 || o.paid === '1'),
                                       items_json: mergeSimilarItems(o.items_json || [])
                                     })
                                   }

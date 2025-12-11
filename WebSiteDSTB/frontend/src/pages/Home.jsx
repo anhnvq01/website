@@ -4,6 +4,36 @@ import { Link } from 'react-router-dom'
 
 const normalizeText = (str) => (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
+// Loading Skeleton Component
+function ProductCardSkeleton() {
+  return (
+    <div className="product-card animate-pulse">
+      <div className="relative overflow-hidden rounded-lg">
+        <div className="w-full aspect-square bg-gray-300 rounded-lg"></div>
+      </div>
+      <div className="p-4 flex flex-col flex-1 gap-2">
+        <div className="h-4 bg-gray-300 rounded w-16"></div>
+        <div className="h-5 bg-gray-300 rounded w-full"></div>
+        <div className="h-4 bg-gray-300 rounded w-32"></div>
+        <div className="mt-auto pt-2">
+          <div className="h-6 bg-gray-300 rounded w-24 mb-2"></div>
+          <div className="h-10 bg-gray-300 rounded w-full"></div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SectionSkeletons({ count = 4 }) {
+  return (
+    <>
+      {Array.from({length: count}).map((_, i) => (
+        <ProductCardSkeleton key={i} />
+      ))}
+    </>
+  )
+}
+
 // Helper component for product card
 export function ProductCard({ product, showSoldCount = true }) {
   // Calculate discount: price is original price, promo_price is discounted price
@@ -97,11 +127,12 @@ export default function Home()
   const [tetProducts, setTetProducts] = useState([])
   const [categoryProducts, setCategoryProducts] = useState({})
   const [categoryList, setCategoryList] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
   const [slide, setSlide] = useState(0)
   const slides = [
-    { title: 'Cùng Đặc Sản Sạch Tây Bắc', subtitle: 'Khám phá hương vị núi rừng', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765267677/taybac/i23j5dgeyktidv9tbvup.jpg', showText: true },
-    { title: 'Sản phẩm chất lượng cao', subtitle: 'Rau rừng - Thịt gác bếp - Rượu vùng cao', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765267679/taybac/ilork8jhjfafjzxr0w27.jpg', showText: true },
-    { title: 'Ưu đãi mỗi ngày', subtitle: 'Giảm giá, combo & quà tặng', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765267680/taybac/yna9syfiwfrcu8yn0bqz.jpg', showText: true },
+    { title: 'Cùng Đặc Sản Sạch Tây Bắc', subtitle: 'Khám phá hương vị núi rừng', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765269706/taybac/ybhmz22eytvkj4gnufl2.jpg', showText: true },
+    { title: 'Sản phẩm chất lượng cao', subtitle: 'Rau rừng - Thịt gác bếp - Rượu vùng cao', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765269708/taybac/zmh4fqbfcqgfrchryxty.jpg', showText: true },
+    { title: 'Ưu đãi mỗi ngày', subtitle: 'Giảm giá, combo & quà tặng', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765269708/taybac/uvhbywzazi19tcnq3l7w.jpg', showText: true },
     { title: '', subtitle: '', image: '/images/bg-4.png', showText: false }
   ]
   const tetCategoryName = 'Tết Nguyên Đán'
@@ -114,6 +145,7 @@ export default function Home()
   useEffect(()=>{ 
     const load = async () => {
       try {
+        setIsLoading(true)
         const [cats, allProducts] = await Promise.all([Api.categories(), Api.products()])
         const orderedCats = (cats || []).map(c => c.category).filter(Boolean)
         const catList = orderedCats.length ? orderedCats : defaultCategories
@@ -144,9 +176,11 @@ export default function Home()
           grouped[cat] = allProducts.filter(p => p.category === cat).slice(0, 12)
         })
         setCategoryProducts(grouped)
+        setIsLoading(false)
       } catch (err) {
         console.error('Load home data error:', err)
         setCategoryList(defaultCategories)
+        setIsLoading(false)
       }
     }
     load()
@@ -222,22 +256,28 @@ export default function Home()
       {/* Category Showcase - removed from top, will be at bottom */}
 
       {/* Hot Promotions */}
-      {hotPromo.length > 0 && (
+      {(isLoading || hotPromo.length > 0) && (
         <section className="container mx-auto px-4 pt-4 pb-12">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-8">
             <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-2 sm:gap-3">
               <span className="text-2xl sm:text-3xl">💥</span>
               <span className="leading-tight">Danh mục sản phẩm khuyến mãi HOT</span>
             </h2>
-            <Link to="/promo" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base whitespace-nowrap">
-              Xem tất cả
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </Link>
+            {!isLoading && (
+              <Link to="/promo" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base whitespace-nowrap">
+                Xem tất cả
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+            )}
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {hotPromo.map(p => <ProductCard key={p.id} product={p} showSoldCount={false} />)}
+            {isLoading ? (
+              <SectionSkeletons count={8} />
+            ) : (
+              hotPromo.map(p => <ProductCard key={p.id} product={p} showSoldCount={false} />)
+            )}
           </div>
         </section>
       )}
@@ -250,14 +290,20 @@ export default function Home()
               <span className="text-3xl md:text-4xl">🎉</span>
               <span>Sản phẩm phục vụ Tết</span>
             </h2>
-            <Link to={`/category/${tetCategoryName}`} className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
-              Xem tất cả
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </Link>
+            {!isLoading && (
+              <Link to={`/category/${tetCategoryName}`} className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
+                Xem tất cả
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+            )}
           </div>
-          {tetProducts.length === 0 ? (
+          {isLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              <SectionSkeletons count={8} />
+            </div>
+          ) : tetProducts.length === 0 ? (
             <div className="text-center py-10 text-gray-600">Chưa có sản phẩm Tết được gắn nhãn.</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -276,12 +322,16 @@ export default function Home()
           </h2>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-          {topSelling.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)}
+          {isLoading ? (
+            <SectionSkeletons count={10} />
+          ) : (
+            topSelling.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)
+          )}
         </div>
       </div>
 
       {/* Category Sections */}
-      {categoryList.map((cat, idx) => (
+      {!isLoading && categoryList.map((cat, idx) => (
         categoryProducts[cat] && categoryProducts[cat].length > 0 && (
           <section key={cat} className={`py-16 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
             <div className="container mx-auto px-4">
@@ -337,34 +387,36 @@ export default function Home()
       </section>
 
       {/* Category Showcase - at bottom */}
-      <section className="py-16 bg-white">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between mb-10">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-3">
-              <span className="text-4xl">🏷️</span>
-              Danh mục sản phẩm
-            </h2>
-            <Link to="#" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1">
-              Xem tất cả
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            {(categoryList.length ? categoryList : defaultCategories).map((name, i)=> (
-              <Link 
-                key={i} 
-                to={'/category/'+name} 
-                className="bg-gradient-to-br from-orange-50 to-red-50 p-6 rounded-2xl shadow-md text-center hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 hover:from-orange-100 hover:to-red-100 group"
-              >
-                <div className="text-5xl mb-3 group-hover:scale-125 transition-transform duration-300">🏷️</div>
-                <p className="font-bold text-gray-800 text-sm">{name}</p>
+      {!isLoading && (
+        <section className="py-16 bg-white">
+          <div className="container mx-auto px-4">
+            <div className="flex items-center justify-between mb-10">
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-3">
+                <span className="text-4xl">🏷️</span>
+                Danh mục sản phẩm
+              </h2>
+              <Link to="#" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1">
+                Xem tất cả
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
               </Link>
-            ))}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              {(categoryList.length ? categoryList : defaultCategories).map((name, i)=> (
+                <Link 
+                  key={i} 
+                  to={'/category/'+name} 
+                  className="bg-gradient-to-br from-orange-50 to-red-50 p-6 rounded-2xl shadow-md text-center hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 hover:from-orange-100 hover:to-red-100 group"
+                >
+                  <div className="text-5xl mb-3 group-hover:scale-125 transition-transform duration-300">🏷️</div>
+                  <p className="font-bold text-gray-800 text-sm">{name}</p>
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   )
 }
