@@ -365,20 +365,15 @@ export default function Admin(){
   }
 
   async function handleImageUpload(e) {
-    console.log('handleImageUpload called with event:', e)
     const file = e.target.files[0]
     if (!file) {
-      console.log('No file selected')
       return
     }
 
-    console.log('File selected:', file.name, file.size)
     const reader = new FileReader()
     reader.onload = (evt) => {
-      console.log('FileReader onload fired, setting state...')
       setCropImage(evt.target.result)
       setShowCropTool(true)
-      console.log('State updated - showCropTool should be true now')
     }
     reader.onerror = () => {
       console.error('FileReader error')
@@ -420,8 +415,6 @@ export default function Admin(){
           if (mainImageInputRef.current) {
             mainImageInputRef.current.value = ''
           }
-          
-          console.log('Image cropped and ready. Will upload when user adds product.')
           
           // Close crop tool
           setShowCropTool(false)
@@ -505,11 +498,9 @@ export default function Admin(){
       // Upload pending main image blob only when submitting product
       let finalImageUrl = productForm.image
       if (pendingImageBlob) {
-        console.log('Uploading pending image blob...')
         const croppedFile = new File([pendingImageBlob], 'cropped-image.jpg', { type: 'image/jpeg' })
         const result = await Api.adminUploadImage(token, croppedFile)
         finalImageUrl = result.imageUrl || result.url
-        console.log('Pending image uploaded:', finalImageUrl)
         setPendingImageBlob(null)
       }
 
@@ -583,19 +574,16 @@ export default function Admin(){
         
         if (hasNoImage && hasGallery) {
           const newImage = product.images[0]
-          console.log(`Fixing product ${product.id}: setting image to ${newImage}`)
           
           await Api.adminUpdateProduct(token, product.id, {
             ...product,
             image: newImage
           })
           fixed++
-          console.log(`✓ Fixed product ${product.id}`)
         }
       }
       
       if (fixed > 0) {
-        console.log(`Total fixed: ${fixed} products`)
         // Force complete reload
         await loadProducts(token)
         showToast(`✓ Đã fix ${fixed} sản phẩm thiếu ảnh đại diện`, 'success')
@@ -630,9 +618,6 @@ export default function Admin(){
     const parsedImages = parseImagesField(freshProduct.images, freshProduct.image)
     // Fix: Empty string is falsy but should fallback to parsedImages[0]
     const mainImage = (freshProduct.image && freshProduct.image.trim()) || parsedImages[0] || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22150%22%3E%3Crect fill=%22%23e5e7eb%22 width=%22200%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2214%22 fill=%22%239ca3af%22%3EẢnh sản phẩm%3C/text%3E%3C/svg%3E'
-    console.log('Edit product - freshProduct.image:', freshProduct.image)
-    console.log('Edit product - parsedImages:', parsedImages)
-    console.log('Edit product - mainImage (final):', mainImage)
     setProductForm({
       name: freshProduct.name,
       price: freshProduct.price,
@@ -649,13 +634,10 @@ export default function Admin(){
     })
     // Gallery should be array of strings, not objects
     setGallery(parsedImages)
-    console.log('Edit product - gallery set to:', parsedImages)
     
     // Set imagePreview with timestamp
     const previewUrl = addTimestampToUrl(mainImage)
-    console.log('Setting imagePreview to:', previewUrl)
     setImagePreview(previewUrl)
-    console.log('imagePreview state (after set):', previewUrl)
     
     setEditingId(freshProduct.id)
     setStep('edit-product')
@@ -894,7 +876,6 @@ export default function Admin(){
           if (existingCustomer) {
             // Customer exists - use their owner as seller
             finalSeller = existingCustomer.owner || 'Quang Tâm'
-            console.log('Existing customer found. Seller set to:', finalSeller)
           } else {
             // New customer - create with default seller
             await Api.adminCreateCustomer(token, {
@@ -902,7 +883,6 @@ export default function Admin(){
               phone: orderForm.customer_phone,
               owner: finalSeller
             })
-            console.log('New customer created with owner:', finalSeller)
           }
         } catch (err) {
           console.warn('Error checking/creating customer:', err)
@@ -1713,9 +1693,6 @@ export default function Admin(){
                     src={imagePreview} 
                     alt="Preview" 
                     className="w-full aspect-square object-cover rounded bg-white"
-                    onLoad={() => {
-                      console.log('✓ Image loaded - src:', imagePreview)
-                    }}
                     onError={(e) => {
                       console.error('❌ Image load failed - src:', e.target.src)
                       console.error('State imagePreview:', imagePreview)
@@ -2962,6 +2939,11 @@ export default function Admin(){
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {step === 'admins' && (
+        <div>
 
           {/* Admin user form section */}
           <div className="mt-6">
