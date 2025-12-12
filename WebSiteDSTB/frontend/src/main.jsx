@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 import './styles/index.css'
@@ -8,15 +8,17 @@ import Category from './pages/Category'
 import Product from './pages/Product'
 import Cart from './pages/Cart'
 import Checkout from './pages/Checkout'
-import Invoice from './pages/Invoice'
-import Admin from './pages/Admin'
-import Info from './pages/Info'
-import Search from './pages/Search'
-import Promo from './pages/Promo'
-import OrderGuide from './pages/OrderGuide'
-import OrderLookup from './pages/OrderLookup'
-import ReturnPolicy from './pages/ReturnPolicy'
-import ShippingPolicy from './pages/ShippingPolicy'
+
+// Lazy load heavy components
+const Invoice = lazy(() => import('./pages/Invoice'))
+const Admin = lazy(() => import('./pages/Admin'))
+const Info = lazy(() => import('./pages/Info'))
+const Search = lazy(() => import('./pages/Search'))
+const Promo = lazy(() => import('./pages/Promo'))
+const OrderGuide = lazy(() => import('./pages/OrderGuide'))
+const OrderLookup = lazy(() => import('./pages/OrderLookup'))
+const ReturnPolicy = lazy(() => import('./pages/ReturnPolicy'))
+const ShippingPolicy = lazy(() => import('./pages/ShippingPolicy'))
 
 // Helper to add cache-busting timestamp to image URLs
 function addTimestampToUrl(url) {
@@ -27,6 +29,14 @@ function addTimestampToUrl(url) {
 function SearchBox() {
   const [query, setQuery] = useState('')
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // Clear search when navigating to home
+  useEffect(() => {
+    if (location.pathname === '/') {
+      setQuery('')
+    }
+  }, [location.pathname])
 
   const handleSearch = (e) => {
     e.preventDefault()
@@ -75,16 +85,36 @@ function CartIcon() {
         setTimeout(() => setAnimate(false), 600)
       }
       
-      // Load product details for preview
+      // Load product details for preview - with caching
+      const cachedProducts = JSON.parse(localStorage.getItem('tb_product_cache') || '{}')
       const productData = {}
+      const productsToFetch = []
+      
+      // Check cache first
       for (const item of cart) {
-        try {
-          const product = await Api.product(item.id)
-          productData[item.id] = product
-        } catch(err) {
-          console.error('Failed to load product', item.id, err)
+        if (cachedProducts[item.id]) {
+          productData[item.id] = cachedProducts[item.id]
+        } else {
+          productsToFetch.push(item.id)
         }
       }
+      
+      // Fetch missing products from API
+      if (productsToFetch.length > 0) {
+        for (const productId of productsToFetch) {
+          try {
+            const product = await Api.product(productId)
+            productData[productId] = product
+            // Update cache
+            cachedProducts[productId] = product
+          } catch(err) {
+            console.error('Failed to load product', productId, err)
+          }
+        }
+        // Save updated cache
+        localStorage.setItem('tb_product_cache', JSON.stringify(cachedProducts))
+      }
+      
       if (Object.keys(productData).length > 0) {
         setProducts(prev => ({ ...prev, ...productData }))
       }
@@ -97,7 +127,10 @@ function CartIcon() {
         try {
           const updatedProduct = await Api.product(updatedProductId)
           setProducts(prev => ({ ...prev, [updatedProductId]: updatedProduct }))
-          console.log('Updated product in cart preview:', updatedProductId)
+          // Update cache
+          const cachedProducts = JSON.parse(localStorage.getItem('tb_product_cache') || '{}')
+          cachedProducts[updatedProductId] = updatedProduct
+          localStorage.setItem('tb_product_cache', JSON.stringify(cachedProducts))
         } catch(err) {
           console.error('Failed to reload product', updatedProductId, err)
         }
@@ -109,14 +142,15 @@ function CartIcon() {
     window.addEventListener('cartUpdated', updateCart)
     // Listen for product updates (when admin updates a product)
     window.addEventListener('productUpdated', handleProductUpdate)
-    const interval = setInterval(updateCart, 1000)
+    // Reduced polling from 1s to 3s for better performance
+    const interval = setInterval(updateCart, 3000)
     
     return () => {
       window.removeEventListener('cartUpdated', updateCart)
       window.removeEventListener('productUpdated', handleProductUpdate)
       clearInterval(interval)
     }
-  }, [products])
+  }, [])
   
   const subtotal = cartItems.reduce((s, item) => {
     if (item.qty <= 0) return s
@@ -192,6 +226,15 @@ function PageWrapper({ children }) {
   
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [location.pathname])
+  
+  // Track previous location for cart referrer
+  useEffect(() => {
+    const previousLocation = sessionStorage.getItem('previousLocation')
+    if (previousLocation && previousLocation !== location.pathname) {
+      sessionStorage.setItem('cartReferrer', previousLocation)
+    }
+    sessionStorage.setItem('previousLocation', location.pathname)
   }, [location.pathname])
   
   return (
@@ -481,15 +524,15 @@ function App(){
               <Route path="/product/:id" element={<Product/>} />
               <Route path="/cart" element={<Cart/>} />
               <Route path="/checkout" element={<Checkout/>} />
-              <Route path="/invoice/:id" element={<Invoice/>} />
-              <Route path="/order-lookup" element={<OrderLookup/>} />
-              <Route path="/admin" element={<Admin/>} />
-              <Route path="/info" element={<Info/>} />
-              <Route path="/order-guide" element={<OrderGuide/>} />
-              <Route path="/promo" element={<Promo/>} />
-              <Route path="/search" element={<Search/>} />
-              <Route path="/return-policy" element={<ReturnPolicy/>} />
-              <Route path="/shipping-policy" element={<ShippingPolicy/>} />
+              <Route path="/invoice/:id" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><Invoice/></Suspense>} />
+              <Route path="/order-lookup" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><OrderLookup/></Suspense>} />
+              <Route path="/admin" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><Admin/></Suspense>} />
+              <Route path="/info" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><Info/></Suspense>} />
+              <Route path="/order-guide" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><OrderGuide/></Suspense>} />
+              <Route path="/promo" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><Promo/></Suspense>} />
+              <Route path="/search" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><Search/></Suspense>} />
+              <Route path="/return-policy" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><ReturnPolicy/></Suspense>} />
+              <Route path="/shipping-policy" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><ShippingPolicy/></Suspense>} />
             </Routes>
           </PageWrapper>
         </main>

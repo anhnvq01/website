@@ -351,7 +351,6 @@ export default function Admin(){
   async function loadOrders(tk) {
     try {
       const data = await Api.adminGetOrders(tk)
-      console.log('Orders loaded:', data)
       // Normalize paid status to boolean
       const normalizedOrders = data.map(order => ({
         ...order,
@@ -437,7 +436,7 @@ export default function Admin(){
           setCropImage(null)
           setCropOffsetX(0)
           setCropOffsetY(0)
-          console.log('Image uploaded. Clean URL for DB:', cleanUrl)
+
           showToast('Tải ảnh thành công!')
           // Don't scroll - stay on form
         } catch(err) {
@@ -535,7 +534,7 @@ export default function Admin(){
 
     try {
       if (editingId) {
-        console.log('Updating product with payload:', payload)
+
         await Api.adminUpdateProduct(token, editingId, payload)
         showToast('Cập nhật sản phẩm thành công')
         // Reload products to update all views
@@ -544,7 +543,7 @@ export default function Admin(){
         window.dispatchEvent(new CustomEvent('productUpdated', { detail: { productId: editingId } }))
         // Stay on edit page after update
       } else {
-        console.log('Adding product with payload:', payload)
+
         await Api.adminAddProduct(token, payload)
         showToast('Thêm sản phẩm thành công')
         resetProductForm()
@@ -890,7 +889,7 @@ export default function Admin(){
   async function loadAdmins(tk) {
     try {
       const data = await Api.adminGetAdmins(tk)
-      console.log('Admins loaded:', data)
+
       setAdmins(data)
     } catch(e) { if (!handleAuthError(e)) console.error(e) }
   }
@@ -2722,11 +2721,8 @@ export default function Admin(){
               <button
                 onClick={async () => {
                   try {
-                    console.log('Updating order status:', selectedOrder.id, newStatus)
                     const payload = { status: newStatus }
-                    console.log('Sending payload:', payload)
                     await Api.adminUpdateOrder(token, selectedOrder.id, payload)
-                    console.log('Update successful')
                     const updated = { ...selectedOrder, status: newStatus }
                     setSelectedOrder(updated)
                     setOrders(orders.map(o => o.id === selectedOrder.id ? updated : o))

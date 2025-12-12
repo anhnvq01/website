@@ -94,6 +94,7 @@ export default function Checkout(){
   const [addressError, setAddressError] = useState('')
   const [provinceError, setProvinceError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const navigate = useNavigate()
   
   // Add refs for scrolling to errors
@@ -124,6 +125,9 @@ export default function Checkout(){
   
   async function submit(e){
     e.preventDefault()
+    
+    // Prevent double submission
+    if (isSubmitting) return
     
     // Validate cart is not empty
     if (cart.length === 0) {
@@ -159,48 +163,61 @@ export default function Checkout(){
     }
     setAddressError('')
     
-    // need to enrich cart with product details from backend
-    const enriched = await Promise.all(cart.map(async it => {
-      try { const p = await Api.product(it.id); return {...it, name: p.name, price: p.promo_price || p.price, weight: parseWeight(p.weight), can_ship_province: p.can_ship_province} } catch { return {...it, name: it.id, price: 0, weight: 0, can_ship_province: 1} }
-    }))
+    // Set submitting state to prevent double clicks
+    setIsSubmitting(true)
     
-    // Check if all products can be shipped to selected province
-    if (province !== 'Hà Nội') {
-      const cannotShip = enriched.filter(it => !canShipToProvince(it, province))
-      if (cannotShip.length > 0) {
-        const productNames = cannotShip.map(it => it.name).join(', ')
-        setProvinceError(`Sản phẩm sau không giao được đến ${province}: ${productNames}. Vui lòng loại bỏ sản phẩm khỏi giỏ hàng.`)
-        provinceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        return
+    try {
+      // need to enrich cart with product details from backend
+      const enriched = await Promise.all(cart.map(async it => {
+        try { const p = await Api.product(it.id); return {...it, name: p.name, price: p.promo_price || p.price, weight: parseWeight(p.weight), can_ship_province: p.can_ship_province} } catch { return {...it, name: it.id, price: 0, weight: 0, can_ship_province: 1} }
+      }))
+      
+      // Filter out items with qty <= 0
+      const validItems = enriched.filter(it => it.qty > 0)
+      
+      // Check if all products can be shipped to selected province
+      if (province !== 'Hà Nội') {
+        const cannotShip = validItems.filter(it => !canShipToProvince(it, province))
+        if (cannotShip.length > 0) {
+          const productNames = cannotShip.map(it => it.name).join(', ')
+          setProvinceError(`Sản phẩm sau không giao được đến ${province}: ${productNames}. Vui lòng loại bỏ sản phẩm khỏi giỏ hàng.`)
+          provinceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          setIsSubmitting(false)
+          return
+        }
       }
+      setProvinceError('')
+      
+      const subtotal = validItems.reduce((s,it)=> s + it.price*it.qty, 0)
+      const totalWeight = validItems.reduce((s,it)=> s + (it.weight || 0)*it.qty, 0)
+      const shipping = calculateShipping(totalWeight, province)
+      const total = subtotal + shipping - Number(discount||0)
+      const payload = {
+        customer: { name: trimmedName, phone, address: trimmedAddress, province },
+        items: validItems,
+        subtotal, shipping, discount: Number(discount||0), total, method
+      }
+      const res = await Api.createOrder(payload)
+      
+      // Clear cart and form data
+      localStorage.removeItem('tb_cart')
+      localStorage.removeItem('tb_checkout_form')
+      
+      // Scroll to top first
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      
+      // Show success message
+      setSuccessMessage('success')
+      
+      // Add small delay before redirecting to show the message
+      setTimeout(() => {
+        navigate('/invoice/'+res.id+'?tab=order')
+      }, 10000)
+    } catch (error) {
+      console.error('Error creating order:', error)
+      setPhoneError('Có lỗi xảy ra khi tạo đơn hàng. Vui lòng thử lại.')
+      setIsSubmitting(false)
     }
-    setProvinceError('')
-    
-    const subtotal = enriched.reduce((s,it)=> s + it.price*it.qty, 0)
-    const totalWeight = enriched.reduce((s,it)=> s + (it.weight || 0)*it.qty, 0)
-    const shipping = calculateShipping(totalWeight, province)
-    const total = subtotal + shipping - Number(discount||0)
-    const payload = {
-      customer: { name: trimmedName, phone, address: trimmedAddress, province },
-      items: enriched,
-      subtotal, shipping, discount: Number(discount||0), total, method
-    }
-    const res = await Api.createOrder(payload)
-    
-    // Clear cart and form data
-    localStorage.removeItem('tb_cart')
-    localStorage.removeItem('tb_checkout_form')
-    
-    // Scroll to top first
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-    
-    // Show success message
-    setSuccessMessage('success')
-    
-    // Redirect after showing message (10 seconds to give user time to read)
-    setTimeout(() => {
-      navigate('/invoice/'+res.id+'?tab=order')
-    }, 10000)
   }
   return (
     <div className="container mx-auto p-4">
@@ -269,23 +286,6 @@ export default function Checkout(){
             </div>
           )}
           
-          <label className="block text-gray-700 font-semibold mb-2 mt-4">Địa chỉ <span className="text-red-600">*</span></label>
-          <textarea 
-            ref={addressRef}
-            value={address} 
-            onChange={e=>{setAddress(e.target.value); setAddressError('')}} 
-            className={`w-full p-3 border rounded my-1 ${addressError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
-            placeholder="Số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành phố"
-          />
-          {addressError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-2 flex items-start gap-2">
-              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-              <span className="text-sm">{addressError}</span>
-            </div>
-          )}
-          
           <label className="block text-gray-700 font-semibold mb-2 mt-4">Tỉnh/Thành phố <span className="text-red-600">*</span></label>
           <select 
             ref={provinceRef}
@@ -303,6 +303,23 @@ export default function Checkout(){
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
               </svg>
               <span className="text-sm">{provinceError}</span>
+            </div>
+          )}
+          
+          <label className="block text-gray-700 font-semibold mb-2 mt-4">Địa chỉ <span className="text-red-600">*</span></label>
+          <textarea 
+            ref={addressRef}
+            value={address} 
+            onChange={e=>{setAddress(e.target.value); setAddressError('')}} 
+            className={`w-full p-3 border rounded my-1 ${addressError ? 'border-red-500 ring-2 ring-red-200' : ''}`}
+            placeholder="Số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành phố"
+          />
+          {addressError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-2 flex items-start gap-2">
+              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <span className="text-sm">{addressError}</span>
             </div>
           )}
           
@@ -340,7 +357,12 @@ export default function Checkout(){
             </div>
           </div>
           
-          <div className="mt-4"><button className="w-full bg-green-700 hover:bg-green-800 text-white px-4 py-3 rounded-lg font-semibold">Xác nhận đặt hàng</button></div>
+          <div className="mt-4"><button disabled={isSubmitting} className={`w-full px-4 py-3 rounded-lg font-semibold text-white transition-all ${isSubmitting ? 'bg-gray-400 cursor-not-allowed opacity-60' : 'bg-green-700 hover:bg-green-800'}`}>{isSubmitting ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+              Đang xử lý...
+            </span>
+          ) : 'Xác nhận đặt hàng'}</button></div>
         </div>
         <div className="p-4 bg-white rounded shadow">
           <h3 className="font-semibold text-lg mb-4">Đơn hàng</h3>

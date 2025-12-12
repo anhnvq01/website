@@ -1,7 +1,25 @@
-import React from 'react'
-import { Link } from 'react-router-dom'
+import React, { useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 
 export default function OrderGuide(){
+  const navigate = useNavigate()
+
+  // Store current page as the referrer when entering OrderGuide
+  useEffect(() => {
+    sessionStorage.setItem('orderGuideReferrer', window.location.pathname)
+  }, [])
+
+  const handleContinueShopping = () => {
+    // Get the previous page - if it was OrderGuide, go to home, otherwise go back
+    const referrer = sessionStorage.getItem('orderGuideReferrer')
+    sessionStorage.removeItem('orderGuideReferrer')
+    
+    if (referrer === '/order-guide' || !referrer) {
+      navigate('/')
+    } else {
+      navigate(referrer)
+    }
+  }
   return (
     <div className="bg-gradient-to-b from-blue-50 to-white min-h-screen">
       {/* Header */}
