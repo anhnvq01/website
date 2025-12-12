@@ -47,7 +47,33 @@ router.get('/', async (req, res) => {
 router.get('/lookup/:phone', async (req, res) => {
   try {
     const phone = req.params.phone.replace(/\s/g, '');
-    const rows = await db.prepare('SELECT * FROM orders WHERE customer_phone LIKE $1 ORDER BY createdat DESC').all(`%${phone}%`);
+    // Normalize phone number: remove common formatting, convert to standard format
+    // Accept both 84... and 0... formats
+    const normalizePhone = (p) => {
+      p = p.replace(/\s/g, '').replace(/\D/g, ''); // Remove all non-digits and spaces
+      // Handle 84 prefix (convert to 0)
+      if (p.startsWith('84')) {
+        p = '0' + p.substring(2);
+      }
+      return p;
+    };
+    
+    const normalizedPhone = normalizePhone(phone);
+    
+    // Search with multiple patterns to handle different formats
+    const rows = await db.prepare(`
+      SELECT * FROM orders 
+      WHERE 
+        customer_phone LIKE $1 
+        OR customer_phone LIKE $2
+        OR REPLACE(REPLACE(customer_phone, ' ', ''), '+', '') LIKE $3
+      ORDER BY createdat DESC
+    `).all(
+      `%${phone}%`,  // Original format with wildcards
+      `%${normalizedPhone}%`,  // Normalized format with wildcards
+      `%${normalizedPhone}%`  // Alternative normalization
+    );
+    
     const orders = rows.map(row => {
       try {
         return {

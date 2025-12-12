@@ -399,11 +399,11 @@ export default function Home()
           <section key={cat} className={`py-16 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
             <div className="container mx-auto px-4">
               <div className="flex items-center justify-between mb-10">
-                <h2 className="text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-3">
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-3">
                   {cat === 'Dược liệu' ? (
                     <img src="https://res.cloudinary.com/drjxzsryz/image/upload/v1765439455/mortar_jrxyue.png" alt="Dược liệu" className="w-10 h-10 object-contain" />
                   ) : (
-                    <span className="text-4xl">{['🥓','🔥','🌰','🌿','🍷','🌾'][idx]}</span>
+                    <span className="text-4xl">{['🥓','🔥','🌰','🌿','🍯','🌾'][idx]}</span>
                   )}
                   {cat}
                 </h2>
@@ -458,11 +458,11 @@ export default function Home()
         <section className="py-16 bg-white">
           <div className="container mx-auto px-4">
             <div className="flex items-center justify-between mb-10">
-              <h2 className="text-3xl md:text-4xl font-bold text-gray-800 flex items-center gap-3">
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-3">
                 <span className="text-4xl">🏷️</span>
                 Danh mục sản phẩm
               </h2>
-              <Link to="#" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1">
+              <Link to="#" className="text-orange-600 font-semibold hover:text-orange-700 transition-colors flex items-center gap-1 text-sm md:text-base">
                 Xem tất cả
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

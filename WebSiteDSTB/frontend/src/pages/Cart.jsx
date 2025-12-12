@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import Api from '../services/api'
 
 // Helper to add cache-busting timestamp to image URLs
@@ -13,6 +13,7 @@ export default function Cart(){
   const [products, setProducts] = useState({})
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+  const location = useLocation()
   
   // Prevent scroll from changing number inputs
   useEffect(() => {
@@ -285,7 +286,15 @@ export default function Cart(){
                 </button>
                 
                 <button 
-                  onClick={() => navigate(-1)}
+                  onClick={() => {
+                    const referrer = sessionStorage.getItem('cartReferrer') || '/'
+                    // If coming from OrderGuide, go to home instead
+                    if (referrer === '/order-guide') {
+                      navigate('/')
+                    } else {
+                      navigate(referrer)
+                    }
+                  }}
                   className="w-full bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-6 py-3 rounded-xl font-semibold text-center transition-all shadow-sm hover:shadow-md"
                 >
                   ← Tiếp Tục Mua

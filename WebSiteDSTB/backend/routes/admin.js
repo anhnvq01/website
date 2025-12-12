@@ -6,7 +6,11 @@ const bcrypt = require('bcrypt');
 const multer = require('multer');
 const ExcelJS = require('exceljs');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('🔴 FATAL ERROR: JWT_SECRET environment variable not configured');
+  process.exit(1);
+}
 
 function ensureImagesArray(value, fallback) {
   if (Array.isArray(value)) {
@@ -54,7 +58,6 @@ function ensureImagesArray(value, fallback) {
     `).run();
     
     // Ensure users table exists
-    console.log('✅ Users table initialized');
   } catch (e) {
     console.error('⚠️ Database initialization error:', e.message);
   }
@@ -194,6 +197,11 @@ router.post('/products', auth, async (req, res) => {
     const shipFlag = toShipFlag(can_ship_province);
     await db.prepare('INSERT INTO products (id,name,price,category,description,image,weight,promo_price,images,sold_count,import_price,is_tet,can_ship_province) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (id) DO UPDATE SET name=$2,price=$3,category=$4,description=$5,image=$6,weight=$7,promo_price=$8,images=$9,sold_count=$10,import_price=$11,is_tet=$12,can_ship_province=$13')
       .run(pid, name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count || 0, import_price || 0, is_tet || 0, shipFlag);
+    
+    // Clear cache
+    const productsRouter = require('./products');
+    if (productsRouter.clearCache) productsRouter.clearCache();
+    
     res.json({ ok: true, id: pid });
   } catch (error) {
     console.error('Error creating product:', error);
@@ -281,6 +289,10 @@ router.put('/products/:id', auth, async (req, res) => {
       WHERE id = $13
     `).run(name, price, category, description, mainImage, weight ?? null, promo_price ?? null, JSON.stringify(gallery), sold_count ?? 0, import_price || 0, is_tet || 0, shipFlag, id);
     
+    // Clear cache in products router
+    const productsRouter = require('./products');
+    if (productsRouter.clearCache) productsRouter.clearCache();
+    
     res.json({ ok: true });
   } catch (error) {
     console.error('Error:', error);
@@ -333,7 +345,6 @@ router.post('/orders', auth, async (req, res) => {
     // Update sold_count for each product
     for (const item of (items_json || [])) {
       if (item.id) {
-        console.log(`Updating sold_count for product ${item.id}, adding ${item.qty || 1}`);
         await db.prepare('UPDATE products SET sold_count = sold_count + $1 WHERE id = $2').run(item.qty || 1, item.id);
       }
     }
@@ -402,7 +413,6 @@ router.delete('/orders/:id', auth, async (req, res) => {
         for (const item of items) {
           if (item.id) {
             const qty = item.qty || 1;
-            console.log(`Reducing sold_count for product ${item.id}, subtracting ${qty}`);
             await db.prepare('UPDATE products SET sold_count = GREATEST(0, sold_count - $1) WHERE id = $2').run(qty, item.id);
           }
         }

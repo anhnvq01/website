@@ -29,7 +29,9 @@ export default function OrderLookup() {
     setSearched(true)
 
     try {
-      const response = await fetch(`/api/orders/lookup/${phone.replace(/\s/g, '')}`)
+      // Remove spaces and special characters for search
+      const normalizedPhone = phone.replace(/\s/g, '').replace(/[^\d+]/g, '')
+      const response = await fetch(`/api/orders/lookup/${encodeURIComponent(normalizedPhone)}`)
       const data = await response.json()
       setOrders(data)
     } catch (err) {
