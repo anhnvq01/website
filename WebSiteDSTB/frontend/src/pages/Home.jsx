@@ -144,9 +144,10 @@ export default function Home()
     { title: '', subtitle: '', image: 'https://res.cloudinary.com/drjxzsryz/image/upload/v1765442438/2_tppbos.png', showText: false }
   ]
   const tetCategoryName = 'Tết Nguyên Đán'
-  const MAX_TOP = 10
-  const MAX_TET = 12
+  const MAX_TOP = 8
+  const MAX_TET = 8
   const MAX_PROMO = 8
+  const MAX_CATEGORY = 8
   const timerRef = useRef(null)
   const defaultCategories = ['Thịt Gác Bếp', 'Thịt Nướng', 'Đồ Khô', 'Rau Rừng – Gia Vị', 'Rượu – Đồ Uống', 'Gạo']
   
@@ -181,7 +182,7 @@ export default function Home()
         // Group by categories
         const grouped = {}
         catList.forEach(cat => {
-          grouped[cat] = allProducts.filter(p => p.category === cat).slice(0, 12)
+          grouped[cat] = allProducts.filter(p => p.category === cat).slice(0, MAX_CATEGORY)
         })
         setCategoryProducts(grouped)
         setIsLoading(false)
@@ -217,7 +218,7 @@ export default function Home()
         const grouped = {}
         const orderedCats = categoryList || defaultCategories
         orderedCats.forEach(cat => {
-          grouped[cat] = allProducts.filter(p => p.category === cat).slice(0, 12)
+          grouped[cat] = allProducts.filter(p => p.category === cat).slice(0, MAX_CATEGORY)
         })
         setCategoryProducts(grouped)
         console.log('Updated product on home page:', event.detail?.productId)
@@ -384,11 +385,11 @@ export default function Home()
             Sản phẩm bán chạy nhất
           </h2>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 lg:gap-4">
           {isLoading ? (
-            <SectionSkeletons count={12} />
+            <SectionSkeletons count={8} />
           ) : (
-            items.map(p => <ProductCard key={p.id} product={p} />)
+            topSelling.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)
           )}
         </div>
       </div>

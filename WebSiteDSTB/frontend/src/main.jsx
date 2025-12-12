@@ -12,6 +12,8 @@ import Checkout from './pages/Checkout'
 // Lazy load heavy components
 const Invoice = lazy(() => import('./pages/Invoice'))
 const Admin = lazy(() => import('./pages/Admin'))
+const AdminCustomers = lazy(() => import('./pages/AdminCustomers'))
+const AdminImportCustomers = lazy(() => import('./pages/AdminImportCustomers'))
 const Info = lazy(() => import('./pages/Info'))
 const Search = lazy(() => import('./pages/Search'))
 const Promo = lazy(() => import('./pages/Promo'))
@@ -527,6 +529,8 @@ function App(){
               <Route path="/invoice/:id" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><Invoice/></Suspense>} />
               <Route path="/order-lookup" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><OrderLookup/></Suspense>} />
               <Route path="/admin" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><Admin/></Suspense>} />
+              <Route path="/admin/customers" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><AdminCustomers/></Suspense>} />
+              <Route path="/admin/import-customers" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><AdminImportCustomers/></Suspense>} />
               <Route path="/info" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><Info/></Suspense>} />
               <Route path="/order-guide" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><OrderGuide/></Suspense>} />
               <Route path="/promo" element={<Suspense fallback={<div className="p-8 text-center">Đang tải...</div>}><Promo/></Suspense>} />
