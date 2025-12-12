@@ -43,6 +43,19 @@ function ensureImagesArray(value, fallback) {
   return [];
 }
 
+const normalizePhone = (p) => {
+  if (!p) return '';
+  let phone = String(p).replace(/\s/g, '').replace(/\D/g, '');
+  if (phone.startsWith('84')) phone = '0' + phone.slice(2);
+  return phone;
+};
+
+async function findCustomerByPhone(phone) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+  return db.prepare('SELECT * FROM customers WHERE normalized_phone = $1').get(normalized);
+}
+
 // Initialize database tables on startup
 (async () => {
   try {
@@ -56,8 +69,44 @@ function ensureImagesArray(value, fallback) {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
-    
-    // Ensure users table exists
+
+    // Customers table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS customers (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        normalized_phone TEXT NOT NULL UNIQUE,
+        owner TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Ensure products table has necessary columns
+    await db.prepare(`
+      ALTER TABLE products
+      ADD COLUMN IF NOT EXISTS weight TEXT,
+      ADD COLUMN IF NOT EXISTS promo_price NUMERIC,
+      ADD COLUMN IF NOT EXISTS images TEXT,
+      ADD COLUMN IF NOT EXISTS sold_count INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS import_price NUMERIC DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS is_tet INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS can_ship_province INTEGER DEFAULT 1
+    `).run();
+
+    // Ensure orders table has necessary columns
+    await db.prepare(`
+      ALTER TABLE orders
+      ADD COLUMN IF NOT EXISTS customer_province TEXT,
+      ADD COLUMN IF NOT EXISTS method TEXT,
+      ADD COLUMN IF NOT EXISTS paid BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS seller TEXT,
+      ADD COLUMN IF NOT EXISTS extra_cost NUMERIC DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
+      ADD COLUMN IF NOT EXISTS customer_owner TEXT,
+      ADD COLUMN IF NOT EXISTS customer_normalized_phone TEXT,
+      ADD COLUMN IF NOT EXISTS customer_id INTEGER
+    `).run();
   } catch (e) {
     console.error('⚠️ Database initialization error:', e.message);
   }
@@ -311,6 +360,53 @@ router.delete('/products/:id', auth, async (req, res) => {
   }
 });
 
+// Customers management
+router.get('/customers', auth, async (req, res) => {
+  try {
+    const customers = await db.prepare('SELECT id, name, phone, normalized_phone, owner, created_at FROM customers ORDER BY created_at DESC').all();
+    res.json(customers);
+  } catch (error) {
+    console.error('Error fetching customers:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/customers', auth, async (req, res) => {
+  try {
+    const { name, phone, owner } = req.body;
+    if (!name || !phone || !owner) return res.status(400).json({ error: 'Missing fields' });
+    const normalized = normalizePhone(phone);
+    await db.prepare('INSERT INTO customers (name, phone, normalized_phone, owner) VALUES ($1, $2, $3, $4) ON CONFLICT (normalized_phone) DO UPDATE SET name = EXCLUDED.name, phone = EXCLUDED.phone, owner = EXCLUDED.owner').run(name, phone, normalized, owner);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error creating customer:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.put('/customers/:id', auth, async (req, res) => {
+  try {
+    const { name, phone, owner } = req.body;
+    if (!name || !phone || !owner) return res.status(400).json({ error: 'Missing fields' });
+    const normalized = normalizePhone(phone);
+    await db.prepare('UPDATE customers SET name = $1, phone = $2, normalized_phone = $3, owner = $4 WHERE id = $5').run(name, phone, normalized, owner, req.params.id);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error updating customer:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.delete('/customers/:id', auth, async (req, res) => {
+  try {
+    await db.prepare('DELETE FROM customers WHERE id = $1').run(req.params.id);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error deleting customer:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Get all orders
 router.get('/orders', auth, async (req, res) => {
   try {
@@ -336,11 +432,15 @@ router.post('/orders', auth, async (req, res) => {
   try {
     const { customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller, extra_cost } = req.body;
     const id = 'ORD' + Date.now();
+    const normalizedPhone = normalizePhone(customer_phone);
+    const matched = await findCustomerByPhone(customer_phone);
+    const customerOwner = matched?.owner || null;
+    const customerId = matched?.id || null;
     
     await db.prepare(`
-      INSERT INTO orders (id, createdat, customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller, extra_cost)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-    `).run(id, new Date().toISOString(), customer_name, customer_phone, customer_address, JSON.stringify(items_json), subtotal, shipping, discount, total, method, paid ? 1 : 0, seller || 'Quang Tâm', extra_cost || 0);
+      INSERT INTO orders (id, createdat, customer_name, customer_phone, customer_address, items_json, subtotal, shipping, discount, total, method, paid, seller, extra_cost, customer_owner, customer_normalized_phone, customer_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+    `).run(id, new Date().toISOString(), customer_name, customer_phone, customer_address, JSON.stringify(items_json), subtotal, shipping, discount, total, method, paid ? 1 : 0, seller || 'Quang Tâm', extra_cost || 0, customerOwner, normalizedPhone, customerId);
     
     // Update sold_count for each product
     for (const item of (items_json || [])) {
@@ -436,6 +536,15 @@ router.patch('/orders/:id', auth, async (req, res) => {
     const id = req.params.id;
     const body = req.body;
 
+    // If phone changes, recompute owner + normalized
+    if (body.customer_phone) {
+      const normalized = normalizePhone(body.customer_phone);
+      const matched = await findCustomerByPhone(body.customer_phone);
+      body.customer_normalized_phone = normalized;
+      body.customer_owner = matched?.owner || null;
+      body.customer_id = matched?.id || null;
+    }
+
     // Build dynamic UPDATE statement
     const fields = [];
     const values = [];
@@ -455,7 +564,10 @@ router.patch('/orders/:id', auth, async (req, res) => {
       paid: 'paid',
       status: 'status',
       seller: 'seller',
-      extra_cost: 'extra_cost'
+      extra_cost: 'extra_cost',
+      customer_owner: 'customer_owner',
+      customer_normalized_phone: 'customer_normalized_phone',
+      customer_id: 'customer_id'
     };
 
     for (const [key, dbField] of Object.entries(allowedFields)) {

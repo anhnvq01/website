@@ -29,6 +29,7 @@ export default function Admin(){
   const [dragStartY, setDragStartY] = useState(0)
   const canvasRef = useRef(null)
   const cropCanvasRef = useRef(null)
+  const mainImageInputRef = useRef(null)
 
   const showToast = (message, type = 'success') => {
     if (toastTimer.current) clearTimeout(toastTimer.current)
@@ -44,41 +45,13 @@ export default function Admin(){
   useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current)
-    }
-  }, [])
-
-  // Prevent scroll from changing number inputs
-  useEffect(() => {
-    const preventNumberScroll = (e) => {
-      if (e.target.type === 'number') {
-        e.target.blur()
-        setTimeout(() => e.target.focus(), 0)
-      }
-    }
-    document.addEventListener('wheel', preventNumberScroll, { passive: false })
-    return () => document.removeEventListener('wheel', preventNumberScroll)
-  }, [])
-
-  // Load token from localStorage on mount
-  useEffect(() => {
-    const savedToken = localStorage.getItem('admin_token')
-    if (savedToken) {
-      // Try to validate; if 401, show login form without clearing token yet
-      setToken(savedToken)
-      setStep('dashboard')
-      validateAndLoad(savedToken)
-    }
-  }, [])
-
-  // Reset crop tool when step changes (e.g., when navigating away)
-  useEffect(() => {
-    if (step !== 'add-product' && step !== 'edit-product') {
-      setShowCropTool(false)
-      setCropImage(null)
       setCropOffsetX(0)
       setCropOffsetY(0)
       setUploadedFile(null)
-      setImagePreview('https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm')
+      // Only reset imagePreview when leaving add/edit product pages
+      if (step === 'add-product' || step === 'edit-product') {
+        setImagePreview('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22150%22%3E%3Crect fill=%22%23e5e7eb%22 width=%22200%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2214%22 fill=%22%239ca3af%22%3EẢnh sản phẩm%3C/text%3E%3C/svg%3E')
+      }
       // Clear canvas completely
       if (cropCanvasRef.current) {
         const ctx = cropCanvasRef.current.getContext('2d')
@@ -86,6 +59,14 @@ export default function Admin(){
       }
     }
   }, [step])
+
+  // Check for saved token on component mount
+  useEffect(() => {
+    const savedToken = localStorage.getItem('admin_token')
+    if (savedToken) {
+      bootstrapAuth(savedToken)
+    }
+  }, [])
 
   // Draw crop image on canvas when showCropTool changes
   useEffect(() => {
@@ -148,9 +129,10 @@ export default function Admin(){
     is_tet: false,
     can_ship_province: true
   })
-  const [imagePreview, setImagePreview] = useState('https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm')
+  const [imagePreview, setImagePreview] = useState('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22150%22%3E%3Crect fill=%22%23e5e7eb%22 width=%22200%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2214%22 fill=%22%239ca3af%22%3EẢnh sản phẩm%3C/text%3E%3C/svg%3E')
   const [gallery, setGallery] = useState([])
   const [uploadedFile, setUploadedFile] = useState(null)
+  const [pendingImageBlob, setPendingImageBlob] = useState(null)
 
   // Order management
   const [orders, setOrders] = useState([])
@@ -383,13 +365,23 @@ export default function Admin(){
   }
 
   async function handleImageUpload(e) {
+    console.log('handleImageUpload called with event:', e)
     const file = e.target.files[0]
-    if (!file) return
+    if (!file) {
+      console.log('No file selected')
+      return
+    }
 
+    console.log('File selected:', file.name, file.size)
     const reader = new FileReader()
     reader.onload = (evt) => {
+      console.log('FileReader onload fired, setting state...')
       setCropImage(evt.target.result)
       setShowCropTool(true)
+      console.log('State updated - showCropTool should be true now')
+    }
+    reader.onerror = () => {
+      console.error('FileReader error')
     }
     reader.readAsDataURL(file)
   }
@@ -397,8 +389,6 @@ export default function Admin(){
   function handleCropConfirm() {
     const displayCanvas = cropCanvasRef.current
     if (!displayCanvas || !cropImage) return
-    
-    const currentStep = step  // Capture current step
     
     // Create a NEW canvas for export (without grid overlay)
     const exportCanvas = document.createElement('canvas')
@@ -415,37 +405,34 @@ export default function Admin(){
       // Draw image WITHOUT grid
       ctx.drawImage(img, offsetX, offsetY, size, size, 0, 0, size, size)
       
-      // Convert CLEAN canvas to blob
-      exportCanvas.toBlob(async (blob) => {
+      // Convert CLEAN canvas to blob (ONLY PREVIEW, NO UPLOAD YET)
+      exportCanvas.toBlob((blob) => {
         try {
-          const croppedFile = new File([blob], 'cropped-image.jpg', { type: 'image/jpeg' })
-          setUploading(true)
-          const result = await Api.adminUploadImage(token, croppedFile)
-          let uploadedUrl = result.imageUrl || result.url
-          
-          // IMPORTANT: Store clean URL (without timestamp) for database
-          const cleanUrl = uploadedUrl
-          // For preview: add timestamp to bypass browser cache
-          const displayUrl = uploadedUrl + (uploadedUrl.includes('?') ? '&' : '?') + 't=' + Date.now()
-          
-          setImagePreview(displayUrl)
-          // Save CLEAN URL to form (without timestamp for DB)
-          setProductForm(prev => ({...prev, image: cleanUrl}))
+          // Save blob for later upload when user submits product form
+          setPendingImageBlob(blob)
           setUploadedFile('cropped-image.jpg')
+          
+          // Create preview URL using blob (no need to upload yet)
+          const previewUrl = URL.createObjectURL(blob)
+          setImagePreview(previewUrl)
+          
+          // Reset file input for next selection
+          if (mainImageInputRef.current) {
+            mainImageInputRef.current.value = ''
+          }
+          
+          console.log('Image cropped and ready. Will upload when user adds product.')
+          
+          // Close crop tool
           setShowCropTool(false)
           setCropImage(null)
           setCropOffsetX(0)
           setCropOffsetY(0)
 
-          showToast('Tải ảnh thành công!')
-          // Don't scroll - stay on form
+          showToast('Ảnh được crop thành công. Sẽ tải lên khi bạn thêm sản phẩm.')
         } catch(err) {
-          if (!handleAuthError(err)) {
-            console.error('Upload error:', err)
-            showToast('Lỗi tải ảnh: ' + (err.response?.data?.error || err.message), 'error')
-          }
-        } finally {
-          setUploading(false)
+          console.error('Crop error:', err)
+          showToast('Lỗi crop ảnh: ' + err.message, 'error')
         }
       }, 'image/jpeg', 0.9)
     }
@@ -499,7 +486,7 @@ export default function Admin(){
     if (!productForm.price || productForm.price <= 0) {
       errors.price = 'Vui lòng nhập giá sản phẩm (lớn hơn 0)'
     }
-    if (!productForm.image && gallery.length === 0) {
+    if (!productForm.image && gallery.length === 0 && !pendingImageBlob) {
       errors.image = 'Vui lòng chọn ảnh đại diện'
     }
     
@@ -513,28 +500,49 @@ export default function Admin(){
     
     setProductFormErrors({})
     
-    const weightNormalized = (() => {
-      if (productForm.weight === null || productForm.weight === undefined || productForm.weight === '') return null
-      const cleaned = String(productForm.weight).replace(',', '.').replace(/[^0-9.]/g, '')
-      const num = parseFloat(cleaned)
-      return Number.isFinite(num) ? num : null
-    })()
-    const payload = {
-      ...productForm,
-      images: gallery,
-      import_price: Number(productForm.import_price) || 0,
-      is_tet: productForm.is_tet ? 1 : 0,
-      can_ship_province: productForm.can_ship_province ? 1 : 0,
-      weight: weightNormalized
-    }
-    if (!payload.image && gallery.length) {
-      payload.image = gallery[0]
-      setProductForm(prev => ({ ...prev, image: gallery[0] }))
-    }
-
     try {
-      if (editingId) {
+      setUploading(true)
+      // Upload pending main image blob only when submitting product
+      let finalImageUrl = productForm.image
+      if (pendingImageBlob) {
+        console.log('Uploading pending image blob...')
+        const croppedFile = new File([pendingImageBlob], 'cropped-image.jpg', { type: 'image/jpeg' })
+        const result = await Api.adminUploadImage(token, croppedFile)
+        finalImageUrl = result.imageUrl || result.url
+        console.log('Pending image uploaded:', finalImageUrl)
+        setPendingImageBlob(null)
+      }
 
+      // Upload pending gallery files (objects with file property)
+      const existingGalleryUrls = gallery
+        .filter(g => typeof g === 'string' || (g && !g.file && !g.isNewFile))
+        .map(g => typeof g === 'string' ? g : g.url)
+      const pendingGalleryFiles = gallery.filter(g => g && g.file && g.isNewFile)
+      const uploadedGalleryUrls = []
+      for (const g of pendingGalleryFiles) {
+        const res = await Api.adminUploadImage(token, g.file)
+        uploadedGalleryUrls.push(res.imageUrl || res.url)
+      }
+      const finalGallery = [...existingGalleryUrls, ...uploadedGalleryUrls]
+
+      const weightNormalized = (() => {
+        if (productForm.weight === null || productForm.weight === undefined || productForm.weight === '') return null
+        const cleaned = String(productForm.weight).replace(',', '.').replace(/[^0-9.]/g, '')
+        const num = parseFloat(cleaned)
+        return Number.isFinite(num) ? num : null
+      })()
+      
+      const payload = {
+        ...productForm,
+        image: finalImageUrl,
+        images: finalGallery,
+        import_price: Number(productForm.import_price) || 0,
+        is_tet: productForm.is_tet ? 1 : 0,
+        can_ship_province: productForm.can_ship_province ? 1 : 0,
+        weight: weightNormalized
+      }
+
+      if (editingId) {
         await Api.adminUpdateProduct(token, editingId, payload)
         showToast('Cập nhật sản phẩm thành công')
         // Reload products to update all views
@@ -543,9 +551,10 @@ export default function Admin(){
         window.dispatchEvent(new CustomEvent('productUpdated', { detail: { productId: editingId } }))
         // Stay on edit page after update
       } else {
-
         await Api.adminAddProduct(token, payload)
         showToast('Thêm sản phẩm thành công')
+        // Reload products list to show new product
+        await loadProducts(token)
         resetProductForm()
         setEditingId(null)
         // Go to products list only after adding new product
@@ -557,7 +566,46 @@ export default function Admin(){
         setEditingId(null)
       }
       window.scrollTo({ top: 0, behavior: 'smooth' })
-    } catch(e){ if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error') }
+    } catch(e) {
+      if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function fixMissingProductImages() {
+    try {
+      let fixed = 0
+      for (const product of products) {
+        // Check if image is missing but images array has items
+        const hasNoImage = !product.image || !product.image.trim()
+        const hasGallery = Array.isArray(product.images) && product.images.length > 0
+        
+        if (hasNoImage && hasGallery) {
+          const newImage = product.images[0]
+          console.log(`Fixing product ${product.id}: setting image to ${newImage}`)
+          
+          await Api.adminUpdateProduct(token, product.id, {
+            ...product,
+            image: newImage
+          })
+          fixed++
+          console.log(`✓ Fixed product ${product.id}`)
+        }
+      }
+      
+      if (fixed > 0) {
+        console.log(`Total fixed: ${fixed} products`)
+        // Force complete reload
+        await loadProducts(token)
+        showToast(`✓ Đã fix ${fixed} sản phẩm thiếu ảnh đại diện`, 'success')
+      } else {
+        showToast('✓ Tất cả sản phẩm đã có ảnh đại diện', 'success')
+      }
+    } catch (err) {
+      console.error('Error fixing images:', err)
+      showToast('❌ Lỗi fix ảnh: ' + err.message, 'error')
+    }
   }
 
   async function deleteProduct(id) {
@@ -580,7 +628,11 @@ export default function Admin(){
     }
     
     const parsedImages = parseImagesField(freshProduct.images, freshProduct.image)
-    const mainImage = freshProduct.image || parsedImages[0] || 'https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm'
+    // Fix: Empty string is falsy but should fallback to parsedImages[0]
+    const mainImage = (freshProduct.image && freshProduct.image.trim()) || parsedImages[0] || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22150%22%3E%3Crect fill=%22%23e5e7eb%22 width=%22200%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2214%22 fill=%22%239ca3af%22%3EẢnh sản phẩm%3C/text%3E%3C/svg%3E'
+    console.log('Edit product - freshProduct.image:', freshProduct.image)
+    console.log('Edit product - parsedImages:', parsedImages)
+    console.log('Edit product - mainImage (final):', mainImage)
     setProductForm({
       name: freshProduct.name,
       price: freshProduct.price,
@@ -595,18 +647,26 @@ export default function Admin(){
       is_tet: !!freshProduct.is_tet,
       can_ship_province: normalizeCanShip(freshProduct.can_ship_province)
     })
+    // Gallery should be array of strings, not objects
     setGallery(parsedImages)
-    // Add timestamp to bypass browser cache for updated images
-    setImagePreview(addTimestampToUrl(mainImage))
+    console.log('Edit product - gallery set to:', parsedImages)
+    
+    // Set imagePreview with timestamp
+    const previewUrl = addTimestampToUrl(mainImage)
+    console.log('Setting imagePreview to:', previewUrl)
+    setImagePreview(previewUrl)
+    console.log('imagePreview state (after set):', previewUrl)
+    
     setEditingId(freshProduct.id)
     setStep('edit-product')
   }
 
   function resetProductForm() {
+    const defaultCategory = categories.length > 0 ? categories[0].category : ''
     setProductForm({
       name: '',
       price: 0,
-      category: 'Thịt Gác Bếp',
+      category: defaultCategory,
       description: '',
       image: '',
       images: [],
@@ -617,9 +677,10 @@ export default function Admin(){
       is_tet: false,
       can_ship_province: true
     })
-    setImagePreview('https://via.placeholder.com/200x150?text=Ảnh+sản+phẩm')
+    setImagePreview('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22150%22%3E%3Crect fill=%22%23e5e7eb%22 width=%22200%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-size=%2214%22 fill=%22%23999%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EChọn ảnh%3C/text%3E%3C/svg%3E')
     setGallery([])
     setUploadedFile(null)
+    setPendingImageBlob(null)
   }
 
   async function toggleOrderPaid(order) {
@@ -817,6 +878,38 @@ export default function Admin(){
       const subtotal = compactItems.reduce((sum, item) => sum + (item.price * item.qty), 0)
       const total = subtotal + orderForm.shipping - orderForm.discount + (orderForm.extra_cost || 0)
 
+      // Auto-detect seller based on existing customer data
+      let finalSeller = orderForm.seller || 'Quang Tâm'
+      
+      if (!editingOrderId) {
+        // Only check for new orders
+        try {
+          // Get all customers to check if phone exists
+          const customers = await Api.adminGetCustomers(token)
+          const existingCustomer = customers.find(c => 
+            c.phone && orderForm.customer_phone && 
+            c.phone.replace(/\D/g, '') === orderForm.customer_phone.replace(/\D/g, '')
+          )
+          
+          if (existingCustomer) {
+            // Customer exists - use their owner as seller
+            finalSeller = existingCustomer.owner || 'Quang Tâm'
+            console.log('Existing customer found. Seller set to:', finalSeller)
+          } else {
+            // New customer - create with default seller
+            await Api.adminCreateCustomer(token, {
+              name: orderForm.customer_name,
+              phone: orderForm.customer_phone,
+              owner: finalSeller
+            })
+            console.log('New customer created with owner:', finalSeller)
+          }
+        } catch (err) {
+          console.warn('Error checking/creating customer:', err)
+          // Continue with order creation even if customer check fails
+        }
+      }
+
       if (editingOrderId) {
         await Api.adminUpdateOrder(token, editingOrderId, {
           customer_name: orderForm.customer_name,
@@ -844,10 +937,10 @@ export default function Admin(){
           total,
           method: orderForm.method,
           paid: orderForm.paid,
-          seller: orderForm.seller || 'Quang Tâm',
+          seller: finalSeller,
           extra_cost: orderForm.extra_cost || 0
         })
-        showToast('Tạo đơn hàng thành công')
+        showToast(`Tạo đơn hàng thành công - Người bán: ${finalSeller}`)
       }
       setOrderForm({
         customer_name: '',
@@ -1057,6 +1150,12 @@ export default function Admin(){
         >
           👤 Tài khoản
         </button>
+        <Link 
+          to="/admin/customers"
+          className="px-4 py-2 font-medium border-b-2 whitespace-nowrap border-transparent text-gray-600 hover:text-green-600"
+        >
+          👥 Khách hàng
+        </Link>
         <button 
           onClick={exportNgayMaiGiao}
           className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap border-transparent text-gray-600 hover:text-green-600 ml-auto`}
@@ -1311,6 +1410,12 @@ export default function Admin(){
                 ))}
               </select>
               <button 
+                onClick={fixMissingProductImages}
+                className="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700 whitespace-nowrap text-sm"
+              >
+                🔧 Fix Ảnh
+              </button>
+              <button 
                 onClick={() => { resetProductForm(); setEditingId(null); setStep('add-product') }}
                 className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 whitespace-nowrap"
               >
@@ -1325,55 +1430,43 @@ export default function Admin(){
               : products.filter(p => p.category === filterCategory)
             
             return filtered.length === 0 ? (
-            <div className="bg-gray-50 p-8 text-center rounded">
-              <p className="text-gray-600">Chưa có sản phẩm nào</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full bg-white rounded shadow">
-                <thead className="bg-gray-100 border-b">
-                  <tr>
-                    <th className="px-4 py-2 text-left">ID</th>
-                    <th className="px-4 py-2 text-left">Tên</th>
-                    <th className="px-4 py-2 text-right">Giá</th>
-                    <th className="px-4 py-2 text-right">Giá nhập</th>
-                    <th className="px-4 py-2 text-left">Danh Mục</th>
-                    <th className="px-4 py-2 text-center">Tết</th>
-                    <th className="px-4 py-2 text-right">KM</th>
-                    <th className="px-4 py-2 text-center">Hành Động</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(p => (
-                    <tr key={p.id} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-2 font-mono text-sm">{p.id}</td>
-                      <td className="px-4 py-2">{p.name}</td>
-                      <td className="px-4 py-2 text-right font-medium">{p.price.toLocaleString()}₫</td>
-                      <td className="px-4 py-2 text-right text-gray-700">{(p.import_price || 0).toLocaleString()}₫</td>
-                      <td className="px-4 py-2 text-sm">{p.category}</td>
-                      <td className="px-4 py-2 text-center">
-                        {p.is_tet ? <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-semibold">Tết</span> : '-' }
-                      </td>
-                      <td className="px-4 py-2 text-right text-orange-600 font-medium">{p.promo_price ? p.promo_price.toLocaleString() + '₫' : '-'}</td>
-                      <td className="px-4 py-2 text-center">
-                        <button 
-                          onClick={() => editProduct(p)}
-                          className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 mr-2"
-                        >
-                          ✏️ Sửa
-                        </button>
-                        <button 
-                          onClick={() => deleteProduct(p.id)}
-                          className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
-                        >
-                          🗑️ Xóa
-                        </button>
-                      </td>
+              <div className="bg-gray-50 p-8 text-center rounded">
+                <p className="text-gray-600">Chưa có sản phẩm nào</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white rounded shadow">
+                  <thead>
+                    <tr className="bg-gray-100 text-left text-sm text-gray-700">
+                      <th className="px-4 py-2">ID</th>
+                      <th className="px-4 py-2">Tên</th>
+                      <th className="px-4 py-2 text-right">Giá</th>
+                      <th className="px-4 py-2 text-right">Giá nhập</th>
+                      <th className="px-4 py-2">Danh mục</th>
+                      <th className="px-4 py-2 text-center">Tết</th>
+                      <th className="px-4 py-2 text-right">Hành động</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filtered.map(p => (
+                      <tr key={p.id} className="border-b hover:bg-gray-50">
+                        <td className="px-4 py-2 font-mono text-sm">{p.id}</td>
+                        <td className="px-4 py-2">{p.name}</td>
+                        <td className="px-4 py-2 text-right font-medium">{p.price.toLocaleString()}₫</td>
+                        <td className="px-4 py-2 text-right text-gray-700">{(p.import_price || 0).toLocaleString()}₫</td>
+                        <td className="px-4 py-2 text-sm">{p.category}</td>
+                        <td className="px-4 py-2 text-center">
+                          {p.is_tet ? <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-semibold">Tết</span> : '-'}
+                        </td>
+                        <td className="px-4 py-2 text-right space-x-2">
+                          <button onClick={()=>editProduct(p)} className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">Sửa</button>
+                          <button onClick={()=>deleteProduct(p.id)} className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700">Xóa</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )
           })()}
         </div>
@@ -1506,46 +1599,58 @@ export default function Admin(){
                   <div className="text-sm text-gray-500">Chưa có ảnh mô tả</div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {gallery.map((url, idx)=> (
-                      <div key={idx} className="relative">
-                        <img src={url} className="w-20 h-20 object-cover rounded border"/>
-                        <button
-                          type="button"
-                          onClick={()=>{
-                            const next = gallery.filter((_,i)=> i!==idx)
-                            setGallery(next)
-                            setProductForm({...productForm, images: next})
-                          }}
-                          className="absolute -top-2 -right-2 bg-red-600 text-white text-xs rounded-full px-1"
-                        >✕</button>
-                      </div>
-                    ))}
+                    {gallery.map((item, idx)=> {
+                      // Handle both string URLs (existing) and object items { file, preview, isNewFile } (new)
+                      let displayUrl = null
+                      if (typeof item === 'string') {
+                        displayUrl = addTimestampToUrl(item) // Existing URL from DB
+                      } else if (item && typeof item === 'object') {
+                        if (item.preview) {
+                          displayUrl = item.preview // New file blob URL for preview
+                        } else if (item.url) {
+                          displayUrl = addTimestampToUrl(item.url) // Old format (shouldn't happen)
+                        }
+                      }
+                      
+                      if (!displayUrl) return null // Skip if no displayable URL
+                      
+                      return (
+                        <div key={idx} className="relative">
+                          <img src={displayUrl} className="w-20 h-20 object-cover rounded border"/>
+                          <button
+                            type="button"
+                            onClick={()=>{
+                              const next = gallery.filter((_,i)=> i!==idx)
+                              setGallery(next)
+                              // Rebuild images array with only existing URLs (not new files)
+                              const imageUrls = next
+                                .filter(g => typeof g === 'string') // Only existing URLs
+                                .map(g => g)
+                              setProductForm({...productForm, images: imageUrls})
+                            }}
+                            className="absolute -top-2 -right-2 bg-red-600 text-white text-xs rounded-full px-1"
+                          >✕</button>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
                 <div className="mt-2">
-                  <input type="file" accept="image/*" multiple onChange={async (e)=>{
+                  <input type="file" accept="image/*" multiple onChange={(e)=>{
                     const files = Array.from(e.target.files||[])
                     if(files.length===0) return
-                    setUploading(true)
-                    try {
-                      const uploadedUrls = []
-                      for(const f of files){
-                        const res = await Api.adminUploadImage(token, f)
-                        const uploadedUrl = res.imageUrl || res.url
-                        uploadedUrls.push(uploadedUrl)
-                      }
-                      const next = [...gallery, ...uploadedUrls]
-                      setGallery(next)
-                      setProductForm(prev => ({...prev, images: next}))
-                      if (!productForm.image && next.length > 0) {
-                        setImagePreview(next[0])
-                        setProductForm(prev => ({...prev, image: next[0]}))
-                      }
-                      showToast(`Đã tải ${uploadedUrls.length} ảnh thành công!`)
-                    } catch(err){ 
-                      console.error('Gallery upload error:', err)
-                      showToast('Upload ảnh mô tả thất bại: ' + (err.response?.data?.error || err.message), 'error') 
-                    } finally { setUploading(false) }
+                    
+                    // Create temporary gallery items with file objects (don't upload yet)
+                    const newGalleryItems = files.map(file => ({
+                      file: file,
+                      preview: URL.createObjectURL(file), // For preview only, NOT for saving
+                      isNewFile: true
+                    }))
+                    
+                    const next = [...gallery, ...newGalleryItems]
+                    setGallery(next)
+                    // Don't put blob URLs into productForm.images - only real URLs!
+                    showToast(`Đã chọn ${files.length} ảnh. Bấm "Cập Nhật Sản Phẩm" để lưu lên server.`, 'info')
                   }} />
                 </div>
               </div>
@@ -1555,7 +1660,7 @@ export default function Admin(){
               <label className="block text-gray-700 font-medium mb-1">Ảnh đại diện <span className="text-red-600">*</span></label>
               
               {/* Crop Tool Modal - Only render when showCropTool is true */}
-              {showCropTool && cropImage && step === 'edit-product' ? (
+              {showCropTool && cropImage && (step === 'edit-product' || step === 'add-product') ? (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 mb-4 animate-fade-in">
                   <div className="bg-white rounded shadow-lg max-w-2xl w-full p-6 animate-scale-in">
                     <h3 className="text-lg font-bold mb-2">✏️ Chọn vùng ảnh đại diện (Hình Vuông)</h3>
@@ -1603,14 +1708,31 @@ export default function Admin(){
               ) : null}
 
               <div className={`border-2 border-dashed rounded p-4 ${productFormErrors.image ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}>
-                <div className="mb-3">
-                  <img src={imagePreview} alt="Preview" className="w-full aspect-square object-cover rounded"/>
+                <div className="mb-3 bg-gray-50 rounded p-2">
+                  <img 
+                    src={imagePreview} 
+                    alt="Preview" 
+                    className="w-full aspect-square object-cover rounded bg-white"
+                    onLoad={() => {
+                      console.log('✓ Image loaded - src:', imagePreview)
+                    }}
+                    onError={(e) => {
+                      console.error('❌ Image load failed - src:', e.target.src)
+                      console.error('State imagePreview:', imagePreview)
+                    }}
+                  />
+                  {imagePreview && !imagePreview.startsWith('data:image/svg') && (
+                    <div className="text-xs text-gray-500 mt-2 break-all p-2 bg-white rounded border border-gray-200">
+                      🔗 URL: {imagePreview.substring(0, 80)}...
+                    </div>
+                  )}
                 </div>
                 <label className="block cursor-pointer">
                   <span className="bg-blue-500 text-white px-3 py-2 rounded inline-block hover:bg-blue-600 disabled:bg-gray-400">
                     {uploading ? 'Đang tải...' : uploadedFile ? '✓ Chọn ảnh khác' : 'Chọn ảnh'}
                   </span>
                   <input 
+                    ref={mainImageInputRef}
                     type="file" 
                     accept="image/*" 
                     onChange={handleImageUpload}
@@ -2629,7 +2751,10 @@ export default function Admin(){
                           .map(o => (
                           <tr key={`order-${o.id}`} className="border-b hover:bg-gray-50">
                             <td className="px-4 py-2 font-mono text-sm">{o.id}</td>
-                            <td className="px-4 py-2">{o.customer_name}</td>
+                            <td className="px-4 py-2">
+                              <div className="font-medium">{o.customer_name}</div>
+                              <div className="text-xs text-gray-500">{o.customer_phone || '—'}</div>
+                            </td>
                             <td className="px-4 py-2 text-sm">
                               <span className="px-2 py-1 rounded bg-purple-100 text-purple-700 font-medium">
                                 {o.seller || 'Quang Tâm'}
@@ -2819,30 +2944,16 @@ export default function Admin(){
                         <td className="px-4 py-2 text-center space-x-2">
                           <button 
                             onClick={() => moveCategory(cat.id, 'up')}
-                            disabled={idx === 0}
-                            className={`px-2 py-1 rounded text-sm ${idx === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                          >
-                            ⬆️
-                          </button>
+                            className="px-2 py-1 rounded bg-gray-200 hover:bg-gray-300"
+                          >⬆</button>
                           <button 
                             onClick={() => moveCategory(cat.id, 'down')}
-                            disabled={idx === categories.length - 1}
-                            className={`px-2 py-1 rounded text-sm ${idx === categories.length - 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                          >
-                            ⬇️
-                          </button>
-                          <button 
-                            onClick={() => setEditingCategoryId(cat.id)}
-                            className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
-                          >
-                            ✏️ Sửa
-                          </button>
+                            className="px-2 py-1 rounded bg-gray-200 hover:bg-gray-300"
+                          >⬇</button>
                           <button 
                             onClick={() => deleteCategory(cat.id)}
-                            className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
-                          >
-                            🗑️ Xóa
-                          </button>
+                            className="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                          >Xóa</button>
                         </td>
                       </tr>
                     ))}
@@ -2851,52 +2962,43 @@ export default function Admin(){
               </div>
             )}
           </div>
-        </div>
-      )}
 
-      {/* Admin Accounts Management */}
-      {step === 'admins' && (
-        <div>
-          <div className="bg-white p-6 rounded shadow mb-6">
-            <h2 className="text-2xl font-bold mb-4">Quản Lý Tài Khoản Admin</h2>
-            
-            {/* Add/Edit Form */}
-            <div className="bg-gray-50 p-4 rounded mb-6">
-              <h3 className="text-lg font-semibold mb-3">{editingAdminId ? '✏️ Sửa Tài Khoản' : '➕ Tạo Tài Khoản Mới'}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-gray-700 font-medium mb-2">Tên đăng nhập</label>
-                  <input 
-                    type="text"
-                    value={adminForm.username}
-                    onChange={e => setAdminForm({...adminForm, username: e.target.value})}
-                    placeholder="Nhập tên đăng nhập"
-                    className="w-full px-3 py-2 border rounded"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 font-medium mb-2">
-                    Mật khẩu {editingAdminId && <span className="text-sm text-gray-500">(Để trống nếu không đổi)</span>}
-                  </label>
-                  <input 
-                    type="password"
-                    value={adminForm.password}
-                    onChange={e => setAdminForm({...adminForm, password: e.target.value})}
-                    placeholder={editingAdminId ? "Để trống nếu không đổi" : "Nhập mật khẩu"}
-                    className="w-full px-3 py-2 border rounded"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 font-medium mb-2">Vai trò</label>
-                  <select
-                    value={adminForm.role}
-                    onChange={e => setAdminForm({...adminForm, role: e.target.value})}
-                    className="w-full px-3 py-2 border rounded"
-                  >
-                    <option value="admin">Admin</option>
-                    <option value="manager">Manager</option>
-                  </select>
-                </div>
+          {/* Admin user form section */}
+          <div className="mt-6">
+            <h3 className="text-xl font-semibold mb-4">Quản lý Admin</h3>
+            <div className="bg-white p-4 rounded shadow space-y-4">
+              <div>
+                <label className="block text-gray-700 font-medium mb-2">Tên đăng nhập</label>
+                <input 
+                  type="text"
+                  value={adminForm.username}
+                  onChange={e => setAdminForm({...adminForm, username: e.target.value})}
+                  placeholder="Nhập tên đăng nhập"
+                  className="w-full px-3 py-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 font-medium mb-2">
+                  Mật khẩu {editingAdminId && <span className="text-sm text-gray-500">(Để trống nếu không đổi)</span>}
+                </label>
+                <input 
+                  type="password"
+                  value={adminForm.password}
+                  onChange={e => setAdminForm({...adminForm, password: e.target.value})}
+                  placeholder={editingAdminId ? "Để trống nếu không đổi" : "Nhập mật khẩu"}
+                  className="w-full px-3 py-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 font-medium mb-2">Vai trò</label>
+                <select
+                  value={adminForm.role}
+                  onChange={e => setAdminForm({...adminForm, role: e.target.value})}
+                  className="w-full px-3 py-2 border rounded"
+                >
+                  <option value="admin">Admin</option>
+                  <option value="manager">Manager</option>
+                </select>
               </div>
               <div className="flex gap-2 mt-4">
                 <button 

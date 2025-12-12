@@ -71,5 +71,11 @@ export default {
   adminGetAdmins: (token) => API.get('/admin/admins', { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
   adminCreateAdmin: (token, payload) => API.post('/admin/admins', payload, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
   adminUpdateAdmin: (token, id, payload) => API.put(`/admin/admins/${id}`, payload, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
-  adminDeleteAdmin: (token, id) => API.delete(`/admin/admins/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data)
+  adminDeleteAdmin: (token, id) => API.delete(`/admin/admins/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+
+  // Admin - Customers
+  adminGetCustomers: (token) => API.get('/admin/customers', { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminCreateCustomer: (token, payload) => API.post('/admin/customers', payload, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminUpdateCustomer: (token, id, payload) => API.put(`/admin/customers/${id}`, payload, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data),
+  adminDeleteCustomer: (token, id) => API.delete(`/admin/customers/${id}`, { headers: { Authorization: 'Bearer ' + token }}).then(r => r.data)
 }

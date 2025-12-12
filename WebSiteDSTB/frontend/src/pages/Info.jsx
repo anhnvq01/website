@@ -44,18 +44,6 @@ export default function Info(){
           </p>
         </div>
       </div>
-
-      {/* Sales Policy Section */}
-      <div>
-        <h2 className="text-2xl font-semibold mb-4 text-green-700">Chính sách bán hàng</h2>
-        <div className="bg-white rounded shadow p-4">
-          <ul className="list-disc pl-6 space-y-2">
-            <li>Thanh toán: COD hoặc chuyển khoản trực tiếp.</li>
-            <li>Hóa đơn lưu dưới 1 URL riêng. Sau khi khách thanh toán, quản trị viên đánh dấu 'Đã thanh toán' để cập nhật trạng thái.</li>
-            <li>Chi phí vận chuyển hiển thị trên checkout.</li>
-          </ul>
-        </div>
-      </div>
     </div>
   )
 }

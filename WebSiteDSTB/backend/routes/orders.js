@@ -4,16 +4,54 @@ const db = require('../db');
 const { v4: uuidv4 } = require('uuid');
 const { sendTelegramNotification } = require('../telegram');
 
+// Ensure customers table + owner columns
+;(async () => {
+  try {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS customers (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        normalized_phone TEXT NOT NULL UNIQUE,
+        owner TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await db.exec('ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_owner TEXT');
+    await db.exec('ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_normalized_phone TEXT');
+    await db.exec('ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_id INTEGER');
+  } catch (e) {
+    console.error('Init customers table error:', e.message);
+  }
+})();
+
+const normalizePhone = (p) => {
+  if (!p) return '';
+  let phone = String(p).replace(/\s/g, '').replace(/\D/g, '');
+  if (phone.startsWith('84')) phone = '0' + phone.slice(2);
+  return phone;
+};
+
+async function findCustomerByPhone(phone) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+  return db.prepare('SELECT * FROM customers WHERE normalized_phone = $1').get(normalized);
+}
+
 router.post('/', async (req, res) => {
   try {
     const { customer, items, subtotal, shipping, discount, total, method } = req.body;
     if (!customer || !items) return res.status(400).json({ error: 'Missing' });
     const id = 'TB' + Date.now();
+    const normalizedPhone = normalizePhone(customer.phone);
+    const matchedCustomer = await findCustomerByPhone(customer.phone);
+    const customerOwner = matchedCustomer?.owner || null;
+    const customerId = matchedCustomer?.id || null;
     
     // Insert order
-    await db.prepare(`INSERT INTO orders (id, createdat, customer_name, customer_phone, customer_address, customer_province, items_json, subtotal, shipping, discount, total, method, paid)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`).run(
-      id, new Date().toISOString(), customer.name, customer.phone, customer.address, customer.province || 'Hà Nội', JSON.stringify(items), subtotal, shipping, discount, total, method, 0
+    await db.prepare(`INSERT INTO orders (id, createdat, customer_name, customer_phone, customer_address, customer_province, items_json, subtotal, shipping, discount, total, method, paid, customer_owner, customer_normalized_phone, customer_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`).run(
+      id, new Date().toISOString(), customer.name, customer.phone, customer.address, customer.province || 'Hà Nội', JSON.stringify(items), subtotal, shipping, discount, total, method, 0, customerOwner, normalizedPhone, customerId
     );
     
     // Update sold_count for each product
@@ -35,7 +73,7 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const rows = await db.prepare('SELECT id, createdat, customer_name, customer_phone, subtotal, shipping, discount, total, method, paid FROM orders ORDER BY createdat DESC').all();
+    const rows = await db.prepare('SELECT id, createdat, customer_name, customer_phone, customer_owner, subtotal, shipping, discount, total, method, paid FROM orders ORDER BY createdat DESC').all();
     res.json(rows);
   } catch (error) {
     console.error('Error:', error);

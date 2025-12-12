@@ -31,7 +31,13 @@ export default function OrderLookup() {
     try {
       // Remove spaces and special characters for search
       const normalizedPhone = phone.replace(/\s/g, '').replace(/[^\d+]/g, '')
-      const response = await fetch(`/api/orders/lookup/${encodeURIComponent(normalizedPhone)}`)
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
+      const response = await fetch(`${apiUrl}/orders/lookup/${encodeURIComponent(normalizedPhone)}`)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
       const data = await response.json()
       setOrders(data)
     } catch (err) {
