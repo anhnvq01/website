@@ -182,7 +182,11 @@ export default function Home()
         // Group by categories
         const grouped = {}
         catList.forEach(cat => {
-          grouped[cat] = allProducts.filter(p => p.category === cat).slice(0, MAX_CATEGORY)
+          const categoryProds = allProducts
+            .filter(p => p.category === cat)
+            .sort((a, b) => (b.sold_count || 0) - (a.sold_count || 0))
+            .slice(0, MAX_CATEGORY)
+          grouped[cat] = categoryProds
         })
         setCategoryProducts(grouped)
         setIsLoading(false)
@@ -218,7 +222,11 @@ export default function Home()
         const grouped = {}
         const orderedCats = categoryList || defaultCategories
         orderedCats.forEach(cat => {
-          grouped[cat] = allProducts.filter(p => p.category === cat).slice(0, MAX_CATEGORY)
+          const categoryProds = allProducts
+            .filter(p => p.category === cat)
+            .sort((a, b) => (b.sold_count || 0) - (a.sold_count || 0))
+            .slice(0, MAX_CATEGORY)
+          grouped[cat] = categoryProds
         })
         setCategoryProducts(grouped)
         console.log('Updated product on home page:', event.detail?.productId)
@@ -340,7 +348,7 @@ export default function Home()
             {isLoading ? (
               <SectionSkeletons count={8} />
             ) : (
-              hotPromo.map(p => <ProductCard key={p.id} product={p} showSoldCount={false} />)
+              hotPromo.map(p => <ProductCard key={p.id} product={p} showSoldCount={true} />)
             )}
           </div>
         </section>

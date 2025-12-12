@@ -115,6 +115,9 @@ export default function Admin(){
   const [editingCategoryId, setEditingCategoryId] = useState(null)
   const [newCategoryName, setNewCategoryName] = useState('')
   const [filterCategory, setFilterCategory] = useState('all')
+  const [searchProduct, setSearchProduct] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(20)
   const [productForm, setProductForm] = useState({
     name: '',
     price: 0,
@@ -535,12 +538,13 @@ export default function Admin(){
 
       if (editingId) {
         await Api.adminUpdateProduct(token, editingId, payload)
-        showToast('Cập nhật sản phẩm thành công')
         // Reload products to update all views
         await loadProducts(token)
         // Trigger event to update CartIcon if product is in cart
         window.dispatchEvent(new CustomEvent('productUpdated', { detail: { productId: editingId } }))
-        // Stay on edit page after update
+        // Show success but stay on page without scrolling
+        showToast('Cập nhật sản phẩm thành công')
+        window.scrollTo({ top: 0, behavior: 'smooth' })
       } else {
         await Api.adminAddProduct(token, payload)
         showToast('Thêm sản phẩm thành công')
@@ -556,7 +560,6 @@ export default function Admin(){
         resetProductForm()
         setEditingId(null)
       }
-      window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch(e) {
       if (!handleAuthError(e)) showToast('Lỗi: ' + (e.response?.data?.error || e.message), 'error')
     } finally {
@@ -1379,9 +1382,16 @@ export default function Admin(){
           <div className="mb-6 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
             <h2 className="text-2xl font-semibold">Quản Lý Sản Phẩm</h2>
             <div className="flex gap-3 items-center w-full sm:w-auto">
+              <input
+                type="text"
+                placeholder="🔍 Tìm sản phẩm..."
+                value={searchProduct}
+                onChange={e => { setSearchProduct(e.target.value); setCurrentPage(1); }}
+                className="px-4 py-2 border rounded-lg flex-1 sm:w-56"
+              />
               <select 
                 value={filterCategory}
-                onChange={e => setFilterCategory(e.target.value)}
+                onChange={e => { setFilterCategory(e.target.value); setCurrentPage(1); }}
                 className="px-4 py-2 border rounded-lg bg-white flex-1 sm:flex-none"
               >
                 <option key="all" value="all">🏷️ Tất cả danh mục</option>
@@ -1389,12 +1399,6 @@ export default function Admin(){
                   <option key={cat.rowid || cat.id || cat.category} value={cat.category}>{cat.category}</option>
                 ))}
               </select>
-              <button 
-                onClick={fixMissingProductImages}
-                className="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700 whitespace-nowrap text-sm"
-              >
-                🔧 Fix Ảnh
-              </button>
               <button 
                 onClick={() => { resetProductForm(); setEditingId(null); setStep('add-product') }}
                 className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 whitespace-nowrap"
@@ -1405,48 +1409,97 @@ export default function Admin(){
           </div>
 
           {(() => {
-            const filtered = filterCategory === 'all' 
+            // Filter by category
+            let filtered = filterCategory === 'all' 
               ? products 
               : products.filter(p => p.category === filterCategory)
             
+            // Filter by search
+            if (searchProduct.trim()) {
+              const search = searchProduct.toLowerCase()
+              filtered = filtered.filter(p => 
+                p.name.toLowerCase().includes(search) || 
+                p.id.toString().includes(search)
+              )
+            }
+            
+            // Sort A-Z by name
+            filtered = filtered.sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+            
+            // Pagination
+            const totalPages = Math.ceil(filtered.length / itemsPerPage)
+            const startIndex = (currentPage - 1) * itemsPerPage
+            const endIndex = startIndex + itemsPerPage
+            const paginatedProducts = filtered.slice(startIndex, endIndex)
+            
             return filtered.length === 0 ? (
               <div className="bg-gray-50 p-8 text-center rounded">
-                <p className="text-gray-600">Chưa có sản phẩm nào</p>
+                <p className="text-gray-600">Không tìm thấy sản phẩm nào</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full bg-white rounded shadow">
-                  <thead>
-                    <tr className="bg-gray-100 text-left text-sm text-gray-700">
-                      <th className="px-4 py-2">ID</th>
-                      <th className="px-4 py-2">Tên</th>
-                      <th className="px-4 py-2 text-right">Giá</th>
-                      <th className="px-4 py-2 text-right">Giá nhập</th>
-                      <th className="px-4 py-2">Danh mục</th>
-                      <th className="px-4 py-2 text-center">Tết</th>
-                      <th className="px-4 py-2 text-right">Hành động</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map(p => (
-                      <tr key={p.id} className="border-b hover:bg-gray-50">
-                        <td className="px-4 py-2 font-mono text-sm">{p.id}</td>
-                        <td className="px-4 py-2">{p.name}</td>
-                        <td className="px-4 py-2 text-right font-medium">{p.price.toLocaleString()}₫</td>
-                        <td className="px-4 py-2 text-right text-gray-700">{(p.import_price || 0).toLocaleString()}₫</td>
-                        <td className="px-4 py-2 text-sm">{p.category}</td>
-                        <td className="px-4 py-2 text-center">
-                          {p.is_tet ? <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-semibold">Tết</span> : '-'}
-                        </td>
-                        <td className="px-4 py-2 text-right space-x-2">
-                          <button onClick={()=>editProduct(p)} className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">Sửa</button>
-                          <button onClick={()=>deleteProduct(p.id)} className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700">Xóa</button>
-                        </td>
+              <>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white rounded shadow">
+                    <thead>
+                      <tr className="bg-gray-100 text-left text-sm text-gray-700">
+                        <th className="px-4 py-2">ID</th>
+                        <th className="px-4 py-2">Tên</th>
+                        <th className="px-4 py-2 text-right">Giá</th>
+                        <th className="px-4 py-2 text-right">Giá nhập</th>
+                        <th className="px-4 py-2">Danh mục</th>
+                        <th className="px-4 py-2 text-center">Tết</th>
+                        <th className="px-4 py-2 text-right">Hành động</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {paginatedProducts.map(p => (
+                        <tr key={p.id} className="border-b hover:bg-gray-50">
+                          <td className="px-4 py-2 font-mono text-sm">{p.id}</td>
+                          <td className="px-4 py-2">{p.name}</td>
+                          <td className="px-4 py-2 text-right font-medium">{p.price.toLocaleString()}₫</td>
+                          <td className="px-4 py-2 text-right text-gray-700">{(p.import_price || 0).toLocaleString()}₫</td>
+                          <td className="px-4 py-2 text-sm">{p.category}</td>
+                          <td className="px-4 py-2 text-center">
+                            {p.is_tet ? <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-semibold">Tết</span> : '-'}
+                          </td>
+                          <td className="px-4 py-2 text-right space-x-2">
+                            <button onClick={()=>editProduct(p)} className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">Sửa</button>
+                            <button onClick={()=>deleteProduct(p.id)} className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700">Xóa</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4 px-2">
+                    <div className="text-sm text-gray-600">
+                      Hiển thị {startIndex + 1}-{Math.min(endIndex, filtered.length)} / {filtered.length} sản phẩm
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        ← Trước
+                      </button>
+                      <span className="px-3 py-1 bg-green-100 text-green-700 font-semibold rounded">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Sau →
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )
           })()}
         </div>
@@ -1456,7 +1509,11 @@ export default function Admin(){
       {(step === 'add-product' || step === 'edit-product') && (
         <div className="max-w-2xl bg-white p-6 rounded shadow" ref={productFormRef}>
           <h2 className="text-2xl font-semibold mb-6">{editingId ? 'Sửa Sản Phẩm' : 'Thêm Sản Phẩm Mới'}</h2>
-          <form onSubmit={saveProduct} noValidate className="space-y-4">
+          <form onSubmit={saveProduct} noValidate className="space-y-4" onKeyPress={(e) => {
+            if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+              e.preventDefault()
+            }
+          }}>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Tên sản phẩm <span className="text-red-600">*</span></label>
@@ -1477,6 +1534,7 @@ export default function Admin(){
                 <input 
                   type="number" 
                   value={productForm.price} 
+                  onWheel={(e) => e.target.blur()}
                   onChange={e=>{setProductForm({...productForm, price: parseInt(e.target.value) || 0}); setProductFormErrors({...productFormErrors, price: ''})}}
                   className={`w-full p-2 border rounded ${productFormErrors.price ? 'border-red-500 ring-2 ring-red-200 bg-red-50' : ''}`}
                 />
@@ -1495,12 +1553,16 @@ export default function Admin(){
                 <input 
                   type="number" 
                   value={productForm.import_price}
+                  onWheel={(e) => e.target.blur()}
                   onChange={e=>setProductForm({...productForm, import_price: parseInt(e.target.value) || 0})}
                   className="w-full p-2 border rounded"
                   min="0"
                 />
               </div>
-              <div className="flex items-center gap-2 mt-7">
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="flex items-center gap-2">
                 <input 
                   type="checkbox"
                   checked={productForm.is_tet}
@@ -1508,7 +1570,7 @@ export default function Admin(){
                 />
                 <label className="text-gray-700 font-medium">Thuộc danh mục Tết</label>
               </div>
-              <div className="flex items-center gap-2 mt-4">
+              <div className="flex items-center gap-2">
                 <input 
                   type="checkbox"
                   checked={productForm.can_ship_province}
@@ -1547,6 +1609,7 @@ export default function Admin(){
                 <input 
                   type="number" 
                   value={productForm.promo_price || ''} 
+                  onWheel={(e) => e.target.blur()}
                   onChange={e=>setProductForm({...productForm, promo_price: e.target.value ? parseInt(e.target.value) : null})}
                   className="w-full p-2 border rounded"
                 />
@@ -1556,6 +1619,7 @@ export default function Admin(){
                 <input 
                   type="number" 
                   value={productForm.sold_count || 0} 
+                  onWheel={(e) => e.target.blur()}
                   onChange={e=>setProductForm({...productForm, sold_count: parseInt(e.target.value) || 0})}
                   className="w-full p-2 border rounded"
                   min="0"
@@ -1862,6 +1926,7 @@ export default function Admin(){
                             <input 
                               type="number"
                               value={item.price}
+                              onWheel={(e) => e.target.blur()}
                               onChange={e=>updateOrderItem(i, 'price', parseInt(e.target.value) || 0)}
                               className="w-full p-2 border rounded text-sm"
                             />
@@ -1873,6 +1938,7 @@ export default function Admin(){
                         <input 
                           type="number"
                           value={item.qty}
+                          onWheel={(e) => e.target.blur()}
                           onChange={e=>updateOrderItem(i, 'qty', parseInt(e.target.value) || 1)}
                           className="w-full p-2 border rounded text-sm"
                           min="1"
@@ -1912,6 +1978,7 @@ export default function Admin(){
                   <input 
                     type="number"
                     value={orderForm.shipping}
+                    onWheel={(e) => e.target.blur()}
                     onChange={e=>setOrderForm({...orderForm, shipping: parseInt(e.target.value) || 0})}
                     className="w-full p-2 border rounded"
                   />
@@ -1921,6 +1988,7 @@ export default function Admin(){
                   <input 
                     type="number"
                     value={orderForm.discount}
+                    onWheel={(e) => e.target.blur()}
                     onChange={e=>setOrderForm({...orderForm, discount: parseInt(e.target.value) || 0})}
                     className="w-full p-2 border rounded"
                   />
@@ -1930,6 +1998,7 @@ export default function Admin(){
                   <input 
                     type="number"
                     value={orderForm.extra_cost || 0}
+                    onWheel={(e) => e.target.blur()}
                     onChange={e=>setOrderForm({...orderForm, extra_cost: parseInt(e.target.value) || 0})}
                     className="w-full p-2 border rounded"
                     placeholder="Không hiển thị cho khách"
@@ -2133,11 +2202,11 @@ export default function Admin(){
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Vận chuyển (₫)</label>
-                      <input type="number" className="w-full p-2 border rounded" value={selectedOrder.shipping || 0} onChange={e=>setSelectedOrder(s=>({...s, shipping: Number(e.target.value||0)}))} />
+                      <input type="number" className="w-full p-2 border rounded" value={selectedOrder.shipping || 0} onWheel={(e) => e.target.blur()} onChange={e=>setSelectedOrder(s=>({...s, shipping: Number(e.target.value||0)}))} />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Giảm giá (₫)</label>
-                      <input type="number" className="w-full p-2 border rounded" value={selectedOrder.discount || 0} onChange={e=>setSelectedOrder(s=>({...s, discount: Number(e.target.value||0)}))} />
+                      <input type="number" className="w-full p-2 border rounded" value={selectedOrder.discount || 0} onWheel={(e) => e.target.blur()} onChange={e=>setSelectedOrder(s=>({...s, discount: Number(e.target.value||0)}))} />
                     </div>
                   </div>
                   
@@ -2246,6 +2315,7 @@ export default function Admin(){
                         <input 
                           type="number"
                           value={selectedOrder.extra_cost || 0}
+                          onWheel={(e) => e.target.blur()}
                           onChange={async (e) => {
                             const newCost = Number(e.target.value) || 0
                             try {
@@ -2368,6 +2438,7 @@ export default function Admin(){
                         type="number"
                         className="w-full p-2 border rounded"
                         value={invoiceInfo.shipping}
+                        onWheel={(e) => e.target.blur()}
                         onChange={e => setEditInvoiceInfo(prev => ({ ...(prev || invoiceInfo), shipping: Number(e.target.value) || 0 }))}
                       />
                     </div>
@@ -2377,6 +2448,7 @@ export default function Admin(){
                         type="number"
                         className="w-full p-2 border rounded"
                         value={invoiceInfo.discount}
+                        onWheel={(e) => e.target.blur()}
                         onChange={e => setEditInvoiceInfo(prev => ({ ...(prev || invoiceInfo), discount: Number(e.target.value) || 0 }))}
                       />
                     </div>
@@ -2444,6 +2516,7 @@ export default function Admin(){
                               placeholder="SL"
                               className="w-full p-1 text-sm border rounded"
                               value={item.qty}
+                              onWheel={(e) => e.target.blur()}
                               onChange={e => {
                                 const next = [...editOrderItems]
                                 next[idx].qty = Number(e.target.value) || 1
@@ -2457,6 +2530,7 @@ export default function Admin(){
                               placeholder="Giá"
                               className="w-full p-1 text-sm border rounded"
                               value={item.price}
+                              onWheel={(e) => e.target.blur()}
                               onChange={e => {
                                 const next = [...editOrderItems]
                                 next[idx].price = Number(e.target.value) || 0
