@@ -92,6 +92,24 @@ a, button, .product-card {
   font-size: 0;
 }
 
+/* Also apply to product detail pages with similar structure */
+.bg-white.rounded-2xl,
+.bg-white.shadow-xl,
+.bg-gradient-to-br {
+  font-size: 0;
+}
+
+.bg-white.rounded-2xl > *,
+.bg-white.shadow-xl > *,
+.bg-gradient-to-br > * {
+  font-size: 1rem;
+}
+
+/* Specifically target product detail image containers */
+.relative > .bg-gradient-to-br {
+  font-size: 0;
+}
+
 /* Restore normal text size for the content area inside product cards */
 .product-card .p-3,
 .product-card .p-4 {

@@ -117,7 +117,7 @@ export default function Product(){
       <div className="grid md:grid-cols-3 gap-8">
         <div className="md:col-span-2">
           <div className="bg-white rounded-2xl shadow-xl p-6">
-            {images.length ? (
+            {images.length > 0 ? (
               <div className="relative">
                 <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 mb-4">
                   <img src={images[active]} className="w-full h-96 object-contain rounded-lg" alt={p.name} />

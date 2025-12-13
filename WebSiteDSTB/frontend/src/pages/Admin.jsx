@@ -15,6 +15,7 @@ export default function Admin(){
   const [pass, setPass] = useState('')
   const [token, setToken] = useState('')
   const [uploading, setUploading] = useState(false) // Track upload status
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true) // Prevent login form flash
   const toastTimer = useRef(null)
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' })
   const [confirmDialog, setConfirmDialog] = useState({ visible: false, message: '', onConfirm: null })
@@ -79,6 +80,8 @@ export default function Admin(){
     const savedToken = localStorage.getItem('admin_token')
     if (savedToken) {
       bootstrapAuth(savedToken)
+    } else {
+      setIsCheckingAuth(false)
     }
   }, [])
 
@@ -169,6 +172,7 @@ export default function Admin(){
   const [filterOrderDateTo, setFilterOrderDateTo] = useState('')
   const [filterSeller, setFilterSeller] = useState('all')
   const [filterCustomerName, setFilterCustomerName] = useState('')
+  const [chartHover, setChartHover] = useState(null) // Track chart bar hover
   const [orderForm, setOrderForm] = useState({
     customer_name: '',
     customer_phone: '',
@@ -285,15 +289,21 @@ export default function Admin(){
       await Api.adminMe(tk)
       setToken(tk)
       setStep('dashboard')
+      // Load only essential data immediately, rest load in background
       await Promise.all([
+        loadStats(tk)
+      ])
+      // Load other data in background
+      Promise.all([
         loadProducts(tk),
         loadOrders(tk),
-        loadStats(tk),
         loadCategories(tk),
         loadAdmins(tk)
-      ])
+      ]).catch(() => {}) // Silent fail for background loads
     } catch (e) {
       handleAuthError(e)
+    } finally {
+      setIsCheckingAuth(false)
     }
   }
 
@@ -1135,6 +1145,18 @@ export default function Admin(){
   }
 
   // Login Screen
+  // Show loading spinner while checking authentication
+  if(isCheckingAuth) return (
+    <div className="container mx-auto p-4">
+      <div className="max-w-md mx-auto bg-white rounded shadow p-6 mt-10">
+        <div className="flex flex-col items-center justify-center py-8">
+          <div className="w-12 h-12 border-4 border-green-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-gray-600">Đang kiểm tra phiên đăng nhập...</p>
+        </div>
+      </div>
+    </div>
+  )
+
   if(step === 'login') return (
     <div className="container mx-auto p-4">
       <ConfirmDialog />
@@ -1281,7 +1303,7 @@ export default function Admin(){
               {/* Chart */}
               <div>
                 <div className="mb-4 text-sm text-gray-600 font-medium">Biểu đồ so sánh (VNĐ)</div>
-                <div className="w-full bg-gray-50 rounded-lg p-6">
+                <div className="w-full bg-gray-50 rounded-lg p-6 relative">
                   {(() => {
                     const labels = ['Hôm nay','Tháng','Năm']
                     const data = [stats.day?.revenueQuangTam || 0, stats.month?.revenueQuangTam || 0, stats.year?.revenueQuangTam || 0]
@@ -1293,36 +1315,77 @@ export default function Admin(){
                     const gap = 30
                     const totalW = labels.length * (barW * 2 + gap + 10)
                     const startX = Math.max(20, (chartW - totalW) / 2)
+                    const formatCurrency = (val) => val.toLocaleString('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
                     return (
-                      <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="xMidYMid meet" className="overflow-visible">
-                        {/* grid lines */}
-                        {[0.25,0.5,0.75,1].map((p,i) => (
-                          <g key={i}>
-                            <line x1="0" x2={chartW} y1={chartH - p*chartH} y2={chartH - p*chartH} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4,4" />
-                          </g>
-                        ))}
-                        {labels.map((lab, i) => {
-                          const rx = startX + i * (barW*2 + gap + 10)
-                          const revH = Math.max(5, Math.round((data[i] / max) * (chartH - 40)))
-                          const profH = Math.max(5, Math.round((profit[i] / max) * (chartH - 40)))
-                          return (
+                      <>
+                        <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="xMidYMid meet" className="overflow-visible">
+                          {/* grid lines */}
+                          {[0.25,0.5,0.75,1].map((p,i) => (
                             <g key={i}>
-                              {/* Revenue bar */}
-                              <rect x={rx} y={chartH - revH - 30} width={barW} height={revH} fill="#f59e0b" rx="4">
-                                <animate attributeName="height" from="0" to={revH} dur="0.8s" fill="freeze" />
-                                <animate attributeName="y" from={chartH - 30} to={chartH - revH - 30} dur="0.8s" fill="freeze" />
-                              </rect>
-                              {/* Profit bar */}
-                              <rect x={rx + barW + 6} y={chartH - profH - 30} width={barW} height={profH} fill="#10b981" rx="4">
-                                <animate attributeName="height" from="0" to={profH} dur="0.8s" fill="freeze" />
-                                <animate attributeName="y" from={chartH - 30} to={chartH - profH - 30} dur="0.8s" fill="freeze" />
-                              </rect>
-                              {/* Label */}
-                              <text x={rx + barW + 3} y={chartH - 10} fontSize="14" fontWeight="600" textAnchor="middle" fill="#374151">{lab}</text>
+                              <line x1="0" x2={chartW} y1={chartH - p*chartH} y2={chartH - p*chartH} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4,4" />
                             </g>
-                          )
-                        })}
-                      </svg>
+                          ))}
+                          {labels.map((lab, i) => {
+                            const rx = startX + i * (barW*2 + gap + 10)
+                            const revH = Math.max(5, Math.round((data[i] / max) * (chartH - 40)))
+                            const profH = Math.max(5, Math.round((profit[i] / max) * (chartH - 40)))
+                            return (
+                              <g key={i}>
+                                {/* Revenue bar */}
+                                <rect 
+                                  x={rx} 
+                                  y={chartH - revH - 30} 
+                                  width={barW} 
+                                  height={revH} 
+                                  fill="#f59e0b" 
+                                  rx="4"
+                                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                                  onMouseEnter={() => setChartHover(`rev-${i}`)}
+                                  onMouseLeave={() => setChartHover(null)}
+                                >
+                                  <animate attributeName="height" from="0" to={revH} dur="0.8s" fill="freeze" />
+                                  <animate attributeName="y" from={chartH - 30} to={chartH - revH - 30} dur="0.8s" fill="freeze" />
+                                </rect>
+                                {/* Profit bar */}
+                                <rect 
+                                  x={rx + barW + 6} 
+                                  y={chartH - profH - 30} 
+                                  width={barW} 
+                                  height={profH} 
+                                  fill="#10b981" 
+                                  rx="4"
+                                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                                  onMouseEnter={() => setChartHover(`prof-${i}`)}
+                                  onMouseLeave={() => setChartHover(null)}
+                                >
+                                  <animate attributeName="height" from="0" to={profH} dur="0.8s" fill="freeze" />
+                                  <animate attributeName="y" from={chartH - 30} to={chartH - profH - 30} dur="0.8s" fill="freeze" />
+                                </rect>
+                                {/* Tooltip - Revenue */}
+                                {chartHover === `rev-${i}` && (
+                                  <g>
+                                    <rect x={rx - 20} y={chartH - revH - 65} width="80" height="25" fill="#1f2937" rx="4" />
+                                    <text x={rx + barW/2 - 20} y={chartH - revH - 48} fontSize="11" fill="white" fontWeight="600" textAnchor="start">
+                                      {formatCurrency(data[i])}
+                                    </text>
+                                  </g>
+                                )}
+                                {/* Tooltip - Profit */}
+                                {chartHover === `prof-${i}` && (
+                                  <g>
+                                    <rect x={rx + barW + 6 - 20} y={chartH - profH - 65} width="80" height="25" fill="#1f2937" rx="4" />
+                                    <text x={rx + barW + 6 - 20} y={chartH - profH - 48} fontSize="11" fill="white" fontWeight="600" textAnchor="start">
+                                      {formatCurrency(profit[i])}
+                                    </text>
+                                  </g>
+                                )}
+                                {/* Label */}
+                                <text x={rx + barW + 3} y={chartH - 10} fontSize="14" fontWeight="600" textAnchor="middle" fill="#374151">{lab}</text>
+                              </g>
+                            )
+                          })}
+                        </svg>
+                      </>
                     )
                   })()}
                 </div>
