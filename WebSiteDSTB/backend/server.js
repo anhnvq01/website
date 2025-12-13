@@ -13,11 +13,22 @@ const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 const app = express();
 
-// Configure CORS - only allow production domain
+// Configure CORS - allow both production and local development
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : ['https://dacsansachtaybac.vercel.app', 'http://localhost:3000', 'http://localhost:5173'];
+
 const corsOptions = {
-  origin: process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-    : 'https://dacsansachtaybac.vercel.app',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200
 };

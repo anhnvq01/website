@@ -103,6 +103,7 @@ function CartIcon() {
       
       // Fetch missing products from API
       if (productsToFetch.length > 0) {
+        const invalidProducts = []
         for (const productId of productsToFetch) {
           try {
             const product = await Api.product(productId)
@@ -110,9 +111,23 @@ function CartIcon() {
             // Update cache
             cachedProducts[productId] = product
           } catch(err) {
-            console.error('Failed to load product', productId, err)
+            if (err.response?.status === 404) {
+              // Product doesn't exist, mark for removal from cart
+              invalidProducts.push(productId)
+              console.warn('Product not found, removing from cart:', productId)
+            } else {
+              console.error('Failed to load product', productId, err)
+            }
           }
         }
+        
+        // Remove invalid products from cart
+        if (invalidProducts.length > 0) {
+          const cleanedCart = cart.filter(item => !invalidProducts.includes(item.id))
+          localStorage.setItem('tb_cart', JSON.stringify(cleanedCart))
+          setCartItems(cleanedCart)
+        }
+        
         // Save updated cache
         localStorage.setItem('tb_product_cache', JSON.stringify(cachedProducts))
       }

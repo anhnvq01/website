@@ -948,4 +948,129 @@ router.get('/export-ngay-mai-giao', auth, async (req, res) => {
   }
 });
 
+// Export product quantities for tomorrow delivery orders
+router.get('/export-product-quantities', auth, async (req, res) => {
+  try {
+    // Get all orders with status "tomorrow_delivery"
+    const orders = await db.prepare(`
+      SELECT items_json FROM orders 
+      WHERE status = 'tomorrow_delivery'
+    `).all();
+
+    if (orders.length === 0) {
+      return res.status(404).json({ error: 'Không có đơn hàng nào với trạng thái "Giao ngày mai"' });
+    }
+
+    // Aggregate product quantities
+    const productQuantities = {};
+    
+    for (const order of orders) {
+      try {
+        const items = JSON.parse(order.items_json || '[]');
+        for (const item of items) {
+          if (item.id && item.name) {
+            if (!productQuantities[item.id]) {
+              productQuantities[item.id] = {
+                name: item.name,
+                quantity: 0,
+                weight: 0
+              };
+            }
+            productQuantities[item.id].quantity += (item.qty || 1);
+            
+            // Get product weight from database
+            const product = await db.prepare('SELECT weight FROM products WHERE id = $1').get(item.id);
+            if (product && product.weight) {
+              productQuantities[item.id].weight += product.weight * (item.qty || 1);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing items:', e);
+      }
+    }
+
+    // Create workbook and worksheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Số lượng hàng cần đặt');
+
+    // Define columns
+    worksheet.columns = [
+      { header: 'STT', key: 'stt', width: 8 },
+      { header: 'Tên sản phẩm', key: 'name', width: 50 },
+      { header: 'Số lượng', key: 'quantity', width: 15 },
+      { header: 'Khối lượng (kg)', key: 'weight', width: 18 }
+    ];
+
+    // Style the header row
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, size: 12 };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4CAF50' }
+    };
+    headerRow.font.color = { argb: 'FFFFFFFF' };
+
+    // Add data rows sorted by product name
+    const sortedProducts = Object.entries(productQuantities).sort((a, b) => 
+      a[1].name.localeCompare(b[1].name)
+    );
+
+    let rowIndex = 1;
+    for (const [productId, data] of sortedProducts) {
+      const row = worksheet.addRow({
+        stt: rowIndex++,
+        name: data.name,
+        quantity: data.quantity,
+        weight: data.weight > 0 ? data.weight.toFixed(2) : ''
+      });
+      
+      // Center align STT, quantity and weight
+      row.getCell(1).alignment = { horizontal: 'center' };
+      row.getCell(3).alignment = { horizontal: 'center' };
+      row.getCell(4).alignment = { horizontal: 'center' };
+    }
+
+    // Calculate totals
+    const totalQuantity = sortedProducts.reduce((sum, [_, data]) => sum + data.quantity, 0);
+    const totalWeight = sortedProducts.reduce((sum, [_, data]) => sum + data.weight, 0);
+
+    // Add total row
+    const totalRow = worksheet.addRow({
+      stt: '',
+      name: 'TỔNG CỘNG',
+      quantity: totalQuantity,
+      weight: totalWeight > 0 ? totalWeight.toFixed(2) : ''
+    });
+    totalRow.font = { bold: true, size: 12 };
+    totalRow.getCell(2).alignment = { horizontal: 'right' };
+    totalRow.getCell(3).alignment = { horizontal: 'center' };
+    totalRow.getCell(4).alignment = { horizontal: 'center' };
+    totalRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFFFEB3B' }
+    };
+
+    // Set response headers for file download
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=SoLuongHang_CanDat_${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
+
+    // Write to response
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Error exporting product quantities:', error);
+    res.status(500).json({ error: 'Lỗi khi xuất file Excel: ' + error.message });
+  }
+});
+
 module.exports = router;

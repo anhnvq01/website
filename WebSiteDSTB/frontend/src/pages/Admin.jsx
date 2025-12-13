@@ -30,8 +30,16 @@ export default function Admin(){
   const canvasRef = useRef(null)
   const cropCanvasRef = useRef(null)
   const mainImageInputRef = useRef(null)
+  const lastToastRef = useRef({ message: '', time: 0 })
 
   const showToast = (message, type = 'success') => {
+    const now = Date.now()
+    // Prevent duplicate toasts within 3 seconds
+    if (lastToastRef.current.message === message && (now - lastToastRef.current.time) < 3000) {
+      return
+    }
+    lastToastRef.current = { message, time: now }
+    
     if (toastTimer.current) clearTimeout(toastTimer.current)
     setToast({ visible: true, message, type })
     toastTimer.current = setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 3200)
@@ -44,7 +52,6 @@ export default function Admin(){
 
   useEffect(() => {
     return () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current)
       setCropOffsetX(0)
       setCropOffsetY(0)
       setUploadedFile(null)
@@ -59,6 +66,13 @@ export default function Admin(){
       }
     }
   }, [step])
+
+  // Cleanup toast timer on unmount only
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+    }
+  }, [])
 
   // Check for saved token on component mount
   useEffect(() => {
@@ -312,6 +326,36 @@ export default function Admin(){
     }
   }
 
+  // Export product quantities for tomorrow delivery
+  async function exportProductQuantities() {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
+      const response = await fetch(`${apiUrl}/admin/export-product-quantities`, {
+        headers: {
+          Authorization: 'Bearer ' + token
+        }
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Xuất file thất bại')
+      }
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `SoLuongHang_CanDat_${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      showToast('Xuất số lượng hàng thành công', 'success')
+    } catch (e) {
+      showToast('Lỗi xuất file: ' + e.message, 'error')
+    }
+  }
+
   const normalizeCanShip = (value) => {
     // Accept numeric, boolean, or string values from backend
     if (value === true || value === 1 || value === '1' || value === 'true') return true
@@ -482,6 +526,9 @@ export default function Admin(){
     if (!productForm.price || productForm.price <= 0) {
       errors.price = 'Vui lòng nhập giá sản phẩm (lớn hơn 0)'
     }
+    if (!productForm.weight || productForm.weight <= 0) {
+      errors.weight = 'Vui lòng nhập trọng lượng (lớn hơn 0)'
+    }
     if (!productForm.image && gallery.length === 0 && !pendingImageBlob) {
       errors.image = 'Vui lòng chọn ảnh đại diện'
     }
@@ -489,7 +536,20 @@ export default function Admin(){
     // If there are errors, display them and scroll to first error
     if (Object.keys(errors).length > 0) {
       setProductFormErrors(errors)
-      productFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      
+      // Scroll to the form first
+      productFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      
+      // Focus on the first error field after scroll
+      setTimeout(() => {
+        const firstErrorField = Object.keys(errors)[0]
+        const fieldInput = document.querySelector(`input[name="${firstErrorField}"], textarea[name="${firstErrorField}"], select[name="${firstErrorField}"]`)
+        if (fieldInput) {
+          fieldInput.focus()
+          fieldInput.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }, 300)
+      
       showToast('Vui lòng điền đầy đủ thông tin', 'error')
       return
     }
@@ -589,13 +649,13 @@ export default function Admin(){
       if (fixed > 0) {
         // Force complete reload
         await loadProducts(token)
-        showToast(`✓ Đã fix ${fixed} sản phẩm thiếu ảnh đại diện`, 'success')
+        showToast(`Đã fix ${fixed} sản phẩm thiếu ảnh đại diện`, 'success')
       } else {
-        showToast('✓ Tất cả sản phẩm đã có ảnh đại diện', 'success')
+        showToast('Tất cả sản phẩm đã có ảnh đại diện', 'success')
       }
     } catch (err) {
       console.error('Error fixing images:', err)
-      showToast('❌ Lỗi fix ảnh: ' + err.message, 'error')
+      showToast('Lỗi fix ảnh: ' + err.message, 'error')
     }
   }
 
@@ -1060,10 +1120,10 @@ export default function Admin(){
       ? 'from-red-600 to-red-700' 
       : 'from-green-600 to-green-700'
     return (
-      <div className="fixed z-[9999] top-4 left-1/2 -translate-x-1/2 w-auto max-w-md">
-        <div className={`bg-gradient-to-r ${bgGradient} text-white px-4 sm:px-6 py-3 sm:py-4 rounded-2xl shadow-2xl animate-slide-in-down flex items-center gap-2 sm:gap-3 border-2 border-white`}>
+      <div className="fixed z-[9999] top-4 left-0 right-0 flex justify-center px-4 animate-fade-in-down pointer-events-none">
+        <div className={`bg-gradient-to-r ${bgGradient} text-white px-4 sm:px-6 py-3 sm:py-4 rounded-2xl shadow-2xl flex items-center gap-2 sm:gap-3 border-2 border-white max-w-md`}>
           <span className="text-2xl sm:text-3xl">{toast.type === 'error' ? '⚠️' : '✓'}</span>
-          <div className="font-bold text-base sm:text-lg">{toast.message}</div>
+          <div className="font-bold text-base sm:text-lg whitespace-nowrap">{toast.message}</div>
         </div>
       </div>
     )
@@ -1145,6 +1205,13 @@ export default function Admin(){
           title="Xuất đơn hàng Ngày mai giao ra Excel"
         >
           📊 Xuất đơn ngày mai giao
+        </button>
+        <button 
+          onClick={exportProductQuantities}
+          className={`px-4 py-2 font-medium border-b-2 whitespace-nowrap border-transparent text-gray-600 hover:text-green-600`}
+          title="Xuất số lượng hàng cần đặt (tổng hợp từ đơn giao ngày mai)"
+        >
+          📦 Xuất số lượng hàng cần đặt
         </button>
       </div>
     
@@ -1518,6 +1585,7 @@ export default function Admin(){
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Tên sản phẩm <span className="text-red-600">*</span></label>
                 <input 
+                  name="name"
                   value={productForm.name} 
                   onChange={e=>{setProductForm({...productForm, name: e.target.value}); setProductFormErrors({...productFormErrors, name: ''})}}
                   className={`w-full p-2 border rounded ${productFormErrors.name ? 'border-red-500 ring-2 ring-red-200 bg-red-50' : ''}`}
@@ -1532,6 +1600,7 @@ export default function Admin(){
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Giá (₫) <span className="text-red-600">*</span></label>
                 <input 
+                  name="price"
                   type="number" 
                   value={productForm.price} 
                   onWheel={(e) => e.target.blur()}
@@ -1594,12 +1663,25 @@ export default function Admin(){
                 </select>
               </div>
               <div>
-                <label className="block text-gray-700 font-medium mb-1">Trọng lượng (kg)</label>
+                <label className="block text-gray-700 font-medium mb-1">Trọng lượng (kg) <span className="text-red-500">*</span></label>
                 <input 
-                  value={productForm.weight} 
-                  onChange={e=>setProductForm({...productForm, weight: e.target.value})}
-                  className="w-full p-2 border rounded"
+                  name="weight"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  value={productForm.weight || ''} 
+                  onWheel={(e) => e.target.blur()}
+                  onChange={e=>{setProductForm({...productForm, weight: e.target.value}); setProductFormErrors({...productFormErrors, weight: ''})}}
+                  className={`w-full p-2 border rounded ${productFormErrors.weight ? 'border-red-500 ring-2 ring-red-200 bg-red-50' : ''}`}
+                  placeholder="Nhập trọng lượng (kg)"
                 />
+                {productFormErrors.weight && (
+                  <div className="text-red-600 text-sm mt-1 flex items-start gap-1">
+                    <span className="text-lg">⚠️</span>
+                    <span>{productFormErrors.weight}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1792,17 +1874,22 @@ export default function Admin(){
             </div>
 
             <div className="flex gap-2 pt-4">
-              <button type="submit" className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 flex-1">
-                💾 {editingId ? 'Cập Nhật' : 'Thêm'} Sản Phẩm
+              <button 
+                type="submit" 
+                disabled={uploading}
+                className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploading ? '⏳ Đang xử lý...' : `💾 ${editingId ? 'Cập Nhật' : 'Thêm'} Sản Phẩm`}
               </button>
               <button 
                 type="button"
+                disabled={uploading}
                 onClick={() => {
                   setStep('products')
                   resetProductForm()
                   setEditingId(null)
                 }}
-                className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
+                className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ← Quay lại danh sách
               </button>
@@ -2903,11 +2990,11 @@ export default function Admin(){
                     setSelectedOrder(updated)
                     setOrders(orders.map(o => o.id === selectedOrder.id ? updated : o))
                     setIsUpdatingStatus(false)
-                    showToast(`✅ Cập nhật trạng thái thành công`, 'success')
+                    showToast(`Cập nhật trạng thái thành công`, 'success')
                     window.scrollTo({ top: 0, behavior: 'smooth' })
                   } catch (error) {
                     console.error('Update error:', error)
-                    showToast(`❌ Lỗi: ${error.message}`, 'error')
+                    showToast(`Lỗi: ${error.message}`, 'error')
                   }
                 }}
                 className="flex-1 px-4 py-2 rounded text-white bg-purple-600 hover:bg-purple-700 font-medium"
