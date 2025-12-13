@@ -4,7 +4,9 @@
 
 set -e
 
-APP_DIR="/var/www/taybac"
+# Đường dẫn app trên VPS. Nếu repo của bạn nằm trong thư mục WebSiteDSTB,
+# hãy đặt APP_DIR tới thư mục đó để tránh lỗi "No such file or directory".
+APP_DIR="/var/www/taybac/WebSiteDSTB"
 BRANCH="main"  # Hoặc branch bạn muốn deploy
 
 echo "🚀 Bắt đầu deploy TayBac Shop..."

@@ -1,9 +1,10 @@
-require('dotenv').config();
+// Ensure .env is loaded from backend directory
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const multer = require('multer');
-const path = require('path');
 const db = require('./db');
 const products = require('./routes/products');
 const orders = require('./routes/orders');
@@ -13,22 +14,11 @@ const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 const app = express();
 
-// Configure CORS - allow both production and local development
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : ['https://dacsansachtaybac.vercel.app', 'http://localhost:3000', 'http://localhost:5173'];
-
+// Configure CORS - only allow production domain
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: process.env.ALLOWED_ORIGINS 
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : 'https://dacsansachtaybac.vercel.app',
   credentials: true,
   optionsSuccessStatus: 200
 };
