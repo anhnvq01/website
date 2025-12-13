@@ -118,9 +118,17 @@ export default function Product(){
         <div className="md:col-span-2">
           <div className="bg-white rounded-2xl shadow-xl p-6">
             {images.length ? (
-              <div>
+              <div className="relative">
                 <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 mb-4">
                   <img src={images[active]} className="w-full h-96 object-contain rounded-lg" alt={p.name} />
+                  {p.is_out_of_stock && (
+                    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-xl">
+                      <div className="text-white text-center">
+                        <p className="text-2xl font-bold">Hết hàng</p>
+                        <p className="text-sm">Tạm không có sẵn</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-2">
                   {images.map((img, i)=> (
@@ -229,10 +237,15 @@ export default function Product(){
           <div className="space-y-3">
             <button 
               onClick={addToCart} 
-              className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 flex items-center justify-center gap-2"
+              disabled={p.is_out_of_stock}
+              className={`w-full px-6 py-4 rounded-xl font-bold text-lg shadow-lg transition-all duration-300 flex items-center justify-center gap-2 ${
+                p.is_out_of_stock 
+                  ? 'bg-gray-400 text-gray-600 cursor-not-allowed opacity-60' 
+                  : 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white hover:shadow-xl hover:scale-105'
+              }`}
             >
               <span className="text-2xl">🛒</span>
-              Thêm vào giỏ hàng
+              {p.is_out_of_stock ? 'Hết hàng' : 'Thêm vào giỏ hàng'}
             </button>
             <button 
               onClick={handleContinueShopping}

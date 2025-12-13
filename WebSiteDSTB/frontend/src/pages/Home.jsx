@@ -77,6 +77,14 @@ export function ProductCard({ product, showSoldCount = true }) {
             -{discountPercent}%
           </div>
         )}
+        {product.is_out_of_stock && (
+          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg">
+            <div className="text-white text-center">
+              <p className="text-xl font-bold">Hết hàng</p>
+              <p className="text-xs">Tạm không có sẵn</p>
+            </div>
+          </div>
+        )}
       </div>
       <div className="p-3 sm:p-4 flex flex-col flex-1 min-w-0">
         <span 
@@ -176,7 +184,9 @@ export default function Home()
         setHotPromo(promoSorted.slice(0, MAX_PROMO))
 
         // Tet products (is_tet flag is true)
-        const tetList = allProducts.filter(p => p.is_tet === 1 || p.is_tet === true)
+        const tetList = allProducts
+          .filter(p => p.is_tet === 1 || p.is_tet === true)
+          .sort((a, b) => (b.sold_count || 0) - (a.sold_count || 0))
         setTetProducts(tetList.slice(0, MAX_TET))
         
         // Group by categories
@@ -217,6 +227,7 @@ export default function Home()
         setHotPromo(promoSorted.slice(0, MAX_PROMO))
 
         const tetList = allProducts.filter(p => p.is_tet === 1 || p.is_tet === true)
+          .sort((a, b) => (b.sold_count || 0) - (a.sold_count || 0))
         setTetProducts(tetList.slice(0, MAX_TET))
         
         const grouped = {}

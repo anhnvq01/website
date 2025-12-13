@@ -121,6 +121,14 @@ export default function Search() {
                       -{discountPercent}%
                     </div>
                   )}
+                  {p.is_out_of_stock && (
+                    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg">
+                      <div className="text-white text-center">
+                        <p className="text-xl font-bold">Hết hàng</p>
+                        <p className="text-xs">Tạm không có sẵn</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="p-4 flex flex-col flex-1">
                   <span 

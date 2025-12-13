@@ -91,6 +91,7 @@ async function findCustomerByPhone(phone) {
       ADD COLUMN IF NOT EXISTS sold_count INTEGER DEFAULT 0,
       ADD COLUMN IF NOT EXISTS import_price NUMERIC DEFAULT 0,
       ADD COLUMN IF NOT EXISTS is_tet INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS is_out_of_stock INTEGER DEFAULT 0,
       ADD COLUMN IF NOT EXISTS can_ship_province INTEGER DEFAULT 1
     `).run();
 
@@ -239,13 +240,15 @@ const toShipFlag = (value) => {
 
 router.post('/products', auth, async (req, res) => {
   try {
-    const { id, name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet, can_ship_province } = req.body;
+    const { id, name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet, is_out_of_stock, can_ship_province } = req.body;
     const pid = id || 'P' + Date.now();
     const gallery = ensureImagesArray(images, image);
     const mainImage = image || gallery[0] || '';
     const shipFlag = toShipFlag(can_ship_province);
-    await db.prepare('INSERT INTO products (id,name,price,category,description,image,weight,promo_price,images,sold_count,import_price,is_tet,can_ship_province) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (id) DO UPDATE SET name=$2,price=$3,category=$4,description=$5,image=$6,weight=$7,promo_price=$8,images=$9,sold_count=$10,import_price=$11,is_tet=$12,can_ship_province=$13')
-      .run(pid, name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count || 0, import_price || 0, is_tet || 0, shipFlag);
+    const tetFlag = is_tet ? 1 : 0;
+    const outOfStockFlag = is_out_of_stock ? 1 : 0;
+    await db.prepare('INSERT INTO products (id,name,price,category,description,image,weight,promo_price,images,sold_count,import_price,is_tet,is_out_of_stock,can_ship_province) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (id) DO UPDATE SET name=$2,price=$3,category=$4,description=$5,image=$6,weight=$7,promo_price=$8,images=$9,sold_count=$10,import_price=$11,is_tet=$12,is_out_of_stock=$13,can_ship_province=$14')
+      .run(pid, name, price, category, description, mainImage, weight || null, promo_price ?? null, JSON.stringify(gallery), sold_count || 0, import_price || 0, tetFlag, outOfStockFlag, shipFlag);
     
     // Clear cache
     const productsRouter = require('./products');
@@ -326,17 +329,19 @@ router.get('/products/:id', auth, async (req, res) => {
 // Update product
 router.put('/products/:id', auth, async (req, res) => {
   try {
-    const { name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet, can_ship_province } = req.body;
+    const { name, price, category, description, image, images, weight, promo_price, sold_count, import_price, is_tet, is_out_of_stock, can_ship_province } = req.body;
     const id = req.params.id;
     const gallery = ensureImagesArray(images, image);
     const mainImage = image || gallery[0] || '';
     const shipFlag = toShipFlag(can_ship_province);
+    const tetFlag = is_tet ? 1 : 0;
+    const outOfStockFlag = is_out_of_stock ? 1 : 0;
 
     await db.prepare(`
       UPDATE products 
-      SET name = $1, price = $2, category = $3, description = $4, image = $5, weight = $6, promo_price = $7, images = $8, sold_count = $9, import_price = $10, is_tet = $11, can_ship_province = $12
-      WHERE id = $13
-    `).run(name, price, category, description, mainImage, weight ?? null, promo_price ?? null, JSON.stringify(gallery), sold_count ?? 0, import_price || 0, is_tet || 0, shipFlag, id);
+      SET name = $1, price = $2, category = $3, description = $4, image = $5, weight = $6, promo_price = $7, images = $8, sold_count = $9, import_price = $10, is_tet = $11, is_out_of_stock = $12, can_ship_province = $13
+      WHERE id = $14
+    `).run(name, price, category, description, mainImage, weight ?? null, promo_price ?? null, JSON.stringify(gallery), sold_count ?? 0, import_price || 0, tetFlag, outOfStockFlag, shipFlag, id);
     
     // Clear cache in products router
     const productsRouter = require('./products');

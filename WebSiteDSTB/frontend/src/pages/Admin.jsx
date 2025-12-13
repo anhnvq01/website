@@ -144,6 +144,7 @@ export default function Admin(){
     sold_count: 0,
     import_price: 0,
     is_tet: false,
+    is_out_of_stock: false,
     can_ship_province: true
   })
   const [imagePreview, setImagePreview] = useState('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22150%22%3E%3Crect fill=%22%23e5e7eb%22 width=%22200%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2214%22 fill=%22%239ca3af%22%3EẢnh sản phẩm%3C/text%3E%3C/svg%3E')
@@ -371,6 +372,7 @@ export default function Admin(){
         images: parseImagesField(p.images, p.image),
         import_price: Number(p.import_price || 0),
         is_tet: !!p.is_tet,
+        is_out_of_stock: !!p.is_out_of_stock,
         can_ship_province: normalizeCanShip(p.can_ship_province)
       }))
       setProducts(normalized)
@@ -592,6 +594,7 @@ export default function Admin(){
         images: finalGallery,
         import_price: Number(productForm.import_price) || 0,
         is_tet: productForm.is_tet ? 1 : 0,
+        is_out_of_stock: productForm.is_out_of_stock ? 1 : 0,
         can_ship_province: productForm.can_ship_province ? 1 : 0,
         weight: weightNormalized
       }
@@ -693,6 +696,7 @@ export default function Admin(){
       sold_count: freshProduct.sold_count || 0,
       import_price: Number(freshProduct.import_price || 0),
       is_tet: !!freshProduct.is_tet,
+      is_out_of_stock: !!freshProduct.is_out_of_stock,
       can_ship_province: normalizeCanShip(freshProduct.can_ship_province)
     })
     // Gallery should be array of strings, not objects
@@ -720,6 +724,7 @@ export default function Admin(){
       sold_count: 0,
       import_price: 0,
       is_tet: false,
+      is_out_of_stock: false,
       can_ship_province: true
     })
     setImagePreview('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22150%22%3E%3Crect fill=%22%23e5e7eb%22 width=%22200%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-size=%2214%22 fill=%22%23999%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EChọn ảnh%3C/text%3E%3C/svg%3E')
@@ -1527,7 +1532,10 @@ export default function Admin(){
                           <td className="px-4 py-2 text-right text-gray-700">{(p.import_price || 0).toLocaleString()}₫</td>
                           <td className="px-4 py-2 text-sm">{p.category}</td>
                           <td className="px-4 py-2 text-center">
-                            {p.is_tet ? <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-semibold">Tết</span> : '-'}
+                            <div className="flex gap-2 justify-center items-center">
+                              {p.is_tet ? <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-semibold">Tết</span> : '-'}
+                              {p.is_out_of_stock ? <span className="px-2 py-1 text-xs rounded-full bg-gray-300 text-gray-700 font-semibold">Hết hàng</span> : ''}
+                            </div>
                           </td>
                           <td className="px-4 py-2 text-right space-x-2">
                             <button onClick={()=>editProduct(p)} className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">Sửa</button>
@@ -1575,7 +1583,19 @@ export default function Admin(){
       {/* Add/Edit Product */}
       {(step === 'add-product' || step === 'edit-product') && (
         <div className="max-w-2xl bg-white p-6 rounded shadow" ref={productFormRef}>
-          <h2 className="text-2xl font-semibold mb-6">{editingId ? 'Sửa Sản Phẩm' : 'Thêm Sản Phẩm Mới'}</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-semibold">{editingId ? 'Sửa Sản Phẩm' : 'Thêm Sản Phẩm Mới'}</h2>
+            {editingId && (
+              <button
+                type="button"
+                onClick={() => { setStep('products'); resetProductForm(); setEditingId(null); }}
+                disabled={uploading}
+                className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500 disabled:opacity-50"
+              >
+                ← Quay lại danh sách
+              </button>
+            )}
+          </div>
           <form onSubmit={saveProduct} noValidate className="space-y-4" onKeyPress={(e) => {
             if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
               e.preventDefault()
@@ -1639,6 +1659,17 @@ export default function Admin(){
                 />
                 <label className="text-gray-700 font-medium">Thuộc danh mục Tết</label>
               </div>
+              <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox"
+                  checked={productForm.is_out_of_stock}
+                  onChange={e=>setProductForm({...productForm, is_out_of_stock: e.target.checked})}
+                />
+                <label className="text-gray-700 font-medium">Hết hàng</label>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
               <div className="flex items-center gap-2">
                 <input 
                   type="checkbox"

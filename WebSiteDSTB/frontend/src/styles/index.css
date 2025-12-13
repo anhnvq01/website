@@ -88,6 +88,20 @@ a, button, .product-card {
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   position: relative;
+  /* Prevent stray text nodes (e.g. lingering zeros) from showing between blocks */
+  font-size: 0;
+}
+
+/* Restore normal text size for the content area inside product cards */
+.product-card .p-3,
+.product-card .p-4 {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+.product-card .p-3 *,
+.product-card .p-4 * {
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .product-card::before {
